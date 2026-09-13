@@ -445,7 +445,7 @@ function render(){
    ${pages(x)}
    <div class=editbar>
      <button class=mini onclick="editVocab('${type}',${i})">✏️ 編輯</button>
-     <button class=mini onclick="moveVocab('${type}',${i})">${type==="main"?"Move to Extended":"Move to Main"}</button>
+     <button class=mini onclick="moveVocab('${type}',${i},'${type==="main"?"ext":"main"}')">${type==="main"?"Move to Extended":"Move to Main"}</button>
      <button class="mini ok" onclick="togglePractice('${type}',${i})">${mastered?"Include in Practice":"Already Mastered / Skip Practice"}</button>
      <button class="mini warn" onclick="deleteVocab('${type}',${i})">🗑 刪除</button>
    </div></div>`}).join("");
@@ -495,7 +495,9 @@ $("saveEdit").onclick=()=>{
  $("modalback").classList.remove("show");editing=null;render();msg("✓ Vocabulary 已更新。");
 };
 window.moveVocab=(type,i,target)=>{
+ if(!["main","ext","unc"].includes(target)) target=type==="main"?"ext":"main";
  let from=arrFor(type),x=from.splice(i,1)[0];
+ if(!x)return;
  let dest=target==="main"?current.mainVocabulary:target==="ext"?current.extendedVocabulary:current.unclassifiedVocabulary;
  dest.push(x);render();msg("✓ 已移動 Vocabulary 分類。");
 };

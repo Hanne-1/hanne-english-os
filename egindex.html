@@ -1,0 +1,1300 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hanne's English OS V2.0</title>
+<style>
+:root{--bg:#f7f5f1;--card:#fffefc;--ink:#39373d;--muted:#85818a;--lav:#8f86a5;--lav2:#eeeaf2;--blue:#edf3f6;--rose:#b18383;--line:#e5e0dc;--green:#657b69;--greenbg:#edf3ee}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",sans-serif}
+.app{max-width:1180px;margin:auto;padding:28px 18px 70px}.top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:20px}
+h1{margin:0;font-size:30px}.sub,.tiny{color:var(--muted);font-size:13px;line-height:1.65}.pill{background:var(--lav2);padding:9px 13px;border-radius:999px;font-size:13px;font-weight:750}
+.nav{display:flex;gap:8px;margin:18px 0}.nav button,.tab{border:0;background:#efedef;border-radius:999px;padding:10px 15px;font:inherit;font-weight:750;cursor:pointer}.nav button.active,.tab.active{background:var(--lav);color:white}
+.page{display:none}.page.active{display:block}.grid{display:grid;grid-template-columns:.88fr 1.12fr;gap:20px}.card{background:var(--card);border:1px solid var(--line);border-radius:21px;padding:22px;box-shadow:0 10px 26px rgba(50,45,55,.05)}
+h2{margin:0 0 7px;font-size:21px}.note{background:var(--blue);padding:12px 14px;border-radius:14px;font-size:13px;line-height:1.65;margin:14px 0}
+.tabs{display:flex;gap:8px;margin:16px 0}.panel{display:none}.panel.active{display:block}
+input,textarea{width:100%;border:1px solid var(--line);border-radius:13px;background:white;padding:12px 13px;font:inherit;color:var(--ink);outline:none}textarea{min-height:320px;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
+input:focus,textarea:focus{border-color:#b5adc2}.row{display:flex;gap:9px}.btn{border:0;border-radius:12px;padding:11px 14px;font:inherit;font-weight:750;cursor:pointer}.primary{background:var(--lav);color:white}.ghost{background:#f0edef;color:var(--ink)}.danger{background:#f7ecec;color:#9b6666}
+.savedurl{display:none;margin-top:9px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;font-size:12px;align-items:center;justify-content:space-between;gap:8px}.savedurl.show{display:flex}.savedurl a{color:#655b77;word-break:break-all}
+.status{margin-top:12px;padding:11px 13px;border-radius:12px;background:var(--greenbg);color:var(--green);font-size:13px;display:none}.status.show{display:block}.status.bad{background:#f7ecec;color:#9b6666}
+.title{border:0;border-bottom:1px solid var(--line);border-radius:0;padding-left:0;font-size:22px;font-weight:800;background:transparent;margin:5px 0 8px}
+.section{padding:17px 0;border-top:1px solid var(--line)}.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}.head h3{margin:0;font-size:16px}.count{font-size:12px;background:#f1eff1;padding:5px 9px;border-radius:999px}
+.item{border:1px solid var(--line);border-radius:13px;padding:12px;margin:8px 0;background:white}.term{font-weight:800;font-size:16px}.pages{font-size:11px;color:#6f6680;margin-top:5px}.empty{font-size:13px;color:var(--muted);padding:6px 0}
+.lesson{border:1px solid var(--line);border-radius:15px;padding:14px;margin:9px 0;background:white;display:flex;justify-content:space-between;gap:10px;align-items:center}.lesson b{display:block;margin-bottom:4px}
+.hero{padding:24px;border-radius:20px;background:var(--lav2);margin-bottom:18px}.hero h2{font-size:25px}.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.step{background:white;border:1px solid var(--line);border-radius:15px;padding:15px}.step strong{display:block;margin-bottom:6px}
+
+.editbar{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.mini{border:0;border-radius:9px;padding:7px 9px;font-size:11px;font-weight:750;cursor:pointer;background:#f1eef2;color:#514b59}
+.mini.warn{background:#f7ecec;color:#9b6666}
+.mini.ok{background:#edf3ee;color:#617768}
+.item.mastered{opacity:.62;background:#f6f5f3}
+.badge{display:inline-block;font-size:10px;padding:3px 7px;border-radius:999px;margin-left:6px;background:#eeeaf2;color:#675e75;vertical-align:middle}
+.badge.skip{background:#edf3ee;color:#617768}
+.modalback{position:fixed;inset:0;background:rgba(40,36,44,.35);display:none;align-items:center;justify-content:center;padding:18px;z-index:50}
+.modalback.show{display:flex}
+.modal{width:min(620px,100%);max-height:88vh;overflow:auto;background:var(--card);border-radius:20px;padding:22px;border:1px solid var(--line);box-shadow:0 22px 70px rgba(30,25,35,.2)}
+.modal h3{margin:0 0 14px}.field{margin:11px 0}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+textarea.small{min-height:90px;font:inherit}
+
+
+.vocab-section{border-radius:17px;padding:14px;margin:0 -8px}
+.vocab-section.main-zone{background:#eee9f4;border:2px solid #9b91ae}
+.vocab-section.ext-zone{background:#edf4ef;border:2px solid #78907d}
+.vocab-label{font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin-bottom:3px}
+.main-zone .vocab-label{color:#756b88}.ext-zone .vocab-label{color:#617768}
+.vocab-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+
+
+.unclassified-zone{background:#fff7e8;border:2px solid #d9bb78;border-radius:17px;padding:14px;margin:0 -8px}
+.unclassified-zone .vocab-label{color:#9a7731}
+.baseline-grid{display:grid;grid-template-columns:320px 1fr;gap:20px}
+.baseline-list{max-height:620px;overflow:auto}
+.base-item{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:7px 0;background:white;cursor:pointer}
+.base-item.active{border-color:#8f86a5;background:#f2eef6}
+.qcard{background:white;border:1px solid var(--line);border-radius:18px;padding:22px}
+.qterm{font-size:30px;font-weight:850;margin:14px 0}
+.answerbox{background:#f7f5f1;border-radius:14px;padding:14px;margin:12px 0;display:none}
+.answerbox.show{display:block}
+.state-buttons{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+.state-buttons button{border:1px solid var(--line);background:white;border-radius:12px;padding:12px 9px;font-weight:750;cursor:pointer}
+.state-buttons button:hover{background:#f3f0f6}
+.progressbar{height:10px;background:#ece8e5;border-radius:999px;overflow:hidden;margin:10px 0 16px}
+.progressbar span{display:block;height:100%;background:#8f86a5;width:0}
+
+.learn-layout{display:grid;grid-template-columns:260px 1fr;gap:20px}
+.learn-side{background:#f7f4f1;border:1px solid var(--line);border-radius:16px;padding:14px;height:max-content}
+.learn-side button{width:100%;text-align:left;border:0;background:transparent;padding:10px;border-radius:10px;cursor:pointer;font-weight:700}
+.learn-side button.active{background:#ebe6f0}
+.learn-card{border:1px solid var(--line);border-radius:18px;padding:22px;background:#fff}
+.learn-question{font-size:22px;font-weight:800;margin:14px 0}
+.learn-input{width:100%;padding:13px;border:1px solid var(--line);border-radius:12px;font:inherit;box-sizing:border-box}
+.timerbox{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#f2eef6;padding:10px 14px;border-radius:14px;margin:12px 0}
+.timerbox strong{font-size:20px}
+.component-tag{display:inline-block;padding:6px 10px;border-radius:999px;background:#eee9f4;font-size:12px;font-weight:800}
+.feedback-pending{background:#fff7e8;border:1px solid #ead7a8;padding:12px;border-radius:12px;margin-top:12px}
+
+.choice-grid{display:grid;gap:9px;margin-top:12px}
+.choice-btn{border:1px solid var(--line);background:white;border-radius:12px;padding:13px;text-align:left;font:inherit;font-weight:700;cursor:pointer}
+.choice-btn.selected{background:#eee9f4;border-color:#9b91ae}
+.choice-btn.correct{background:#edf5ef;border-color:#78907d}
+.choice-btn.wrong{background:#fff0ef;border-color:#c98b86}
+.auto-feedback{padding:11px 13px;border-radius:12px;margin-top:10px;background:#f7f5f1}
+.baseline-scope{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.scope-chip{padding:7px 10px;border-radius:999px;background:#f0ece8;font-size:12px;font-weight:800}
+
+.vocab-three{display:grid;gap:16px}.vocab-q{border:1px solid var(--line);border-radius:16px;padding:16px;background:#fff}.vocab-q h4{margin:0 0 7px}.explain-box{margin-top:12px;padding:13px 14px;border-radius:13px;background:#f7f5f1;border:1px solid var(--line);line-height:1.55}.skip-reasons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}@media(max-width:650px){.skip-reasons{grid-template-columns:1fr}}
+
+.session-nav-btn{width:100%;text-align:left;border:0;background:transparent;border-radius:14px;padding:12px 14px;cursor:pointer;font:inherit;margin-bottom:5px}
+.session-nav-btn.active{background:#eee9f4}.session-nav-btn .nav-title{font-weight:850;display:block}.session-nav-btn .nav-count{font-size:12px;opacity:.65;margin-top:3px;display:block}
+
+.word-with-audio{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.speak-btn{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 11px;cursor:pointer;font-size:14px}
+.speak-btn:hover{background:#f5f2f7}
+.struggle-box{margin-top:12px;padding:13px 14px;border:1px solid var(--line);border-radius:14px;background:#faf9f7}
+.struggle-options{display:grid;gap:8px;margin-top:10px}
+.struggle-options button{text-align:left}
+.pause-overlay{margin-top:12px;padding:14px;border-radius:14px;background:#f2eff5;border:1px solid var(--line);font-weight:700}
+
+.vocab-topic-list{display:grid;gap:12px;margin-top:18px}
+.vocab-row{display:grid;grid-template-columns:minmax(150px,.9fr) minmax(220px,1.5fr) auto;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+.vocab-prompt{font-weight:850;font-size:18px}
+.vocab-actions{display:flex;gap:7px;align-items:center}
+.vocab-forgot{border:1px solid #d7cfdc;background:#fff;border-radius:999px;padding:8px 11px;cursor:pointer;white-space:nowrap}
+.vocab-forgot.active{background:#eee9f4;border-color:#bcaec7}
+.vocab-missing{border:1px solid #d8c9b8;background:#fffaf4;border-radius:999px;padding:8px 11px;cursor:pointer;white-space:nowrap}
+.vocab-missing.active{background:#f4eadf;border-color:#c9ab8a}
+.voice-select{border:1px solid var(--line);border-radius:10px;padding:7px 9px;background:#fff;max-width:240px}
+.topic-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+
+.analytics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+.analytics-card{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fff}
+.analytics-card h4{margin:0 0 8px;font-size:14px}
+.analytics-big{font-size:24px;font-weight:900}
+.analytics-sub{font-size:12px;opacity:.68;margin-top:4px}
+.analytics-table{width:100%;border-collapse:collapse;margin-top:12px}
+.analytics-table th,.analytics-table td{padding:9px 7px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}
+.analytics-badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#f2eff5;font-size:12px;font-weight:800}
+@media(max-width:820px){.analytics-grid{grid-template-columns:1fr}.analytics-table{font-size:12px}}
+@media(max-width:820px){
+ .vocab-row{grid-template-columns:1fr;gap:8px}
+ .vocab-actions{justify-content:flex-start}
+}
+@media(max-width:820px){.learn-layout{grid-template-columns:1fr}}
+
+@media(max-width:820px){.baseline-grid{grid-template-columns:1fr}.state-buttons{grid-template-columns:1fr 1fr}}
+
+@media(max-width:820px){.grid,.steps{grid-template-columns:1fr}.top{flex-direction:column}.row{flex-direction:column}}
+</style>
+</head><body><div class="app">
+<div class="top"><div><h1>Hanne's English OS</h1><div class="sub">V2.18 · Cloud Sync + Correction Review</div></div><div id="syncStatus" class="pill">Sync connecting…</div></div>
+<div class="nav"><button data-page="dashboard" class="active">Dashboard</button><button data-page="materials">Materials</button><button data-page="add">＋ Add Material</button><button data-page="learn">Learning Session</button><button data-page="correction">Correction</button><button data-page="review">Review</button><button data-page="speaking">Speaking</button></div>
+
+<section id="dashboard" class="page active">
+<div class="hero"><h2>English OS 的資料入口改好了 🌱</h2><div class="sub">English OS 直接從 Learning Session 建立與更新 Learning State；不再另外做 。</div></div>
+<div class="steps">
+<div class="step"><strong>1 · PDF</strong><div class="tiny">把教材交給 ChatGPT。</div></div>
+<div class="step"><strong>2 · Curriculum JSON</strong><div class="tiny">ChatGPT 依固定格式整理。</div></div>
+<div class="step"><strong>3 · English OS</strong><div class="tiny">貼入 JSON → Preview → Confirm。</div></div>
+<div class="step"><strong>4 · Learning</strong><div class="tiny">下一階段：initial screening → Practice → Timer。</div></div>
+</div>
+<div class="card" style="margin-top:20px">
+  <div class="eyebrow">CLOUD SYNC</div>
+  <h2 style="margin:6px 0 8px">手機與電腦共用同一份資料</h2>
+  <div class="sub">資料已改用 Cloud Sync。完成公開部署後，手機可用 4G / 5G / 任意 Wi‑Fi 使用，不需要 Mac 開著。</div>
+  <div id="mobileAddress" class="note" style="margin-top:12px">正在取得Cloud 狀態…</div>
+  <div class="tiny" style="margin-top:8px">目前同步的是已儲存資料；正在作答中的未提交文字不建議同時在兩台裝置編輯。</div>
+</div>
+<div class="card" style="margin-top:20px"><h2>Saved Lessons</h2><div id="dashLessons"></div></div>
+</section>
+
+<section id="materials" class="page"><div class="card"><h2>Materials</h2><div class="sub">已確認並儲存在這個瀏覽器的教材。按 Open / Edit 可重新開啟同一份 Curriculum 修改；儲存後會更新原 Lesson。</div><div id="lessons"></div></div></section>
+
+<section id="add" class="page">
+<div class="grid">
+<div class="card">
+<h2>＋ Add Material</h2>
+<div class="note"><b>新的方式：</b>PDF 不再交給網站解析。先在 ChatGPT 分析教材，請它輸出 English OS Curriculum JSON，再貼到這裡。</div>
+<label class="tiny">PDF Reference URL（選填，只作教材來源紀錄）</label>
+<div class="row"><input id="pdfurl" placeholder="https://...pdf"><button id="openurl" class="btn ghost">Open</button></div>
+<div id="savedurl" class="savedurl"><a id="savedlink" target="_blank"></a><button id="clearurl" class="btn ghost">清除</button></div>
+<div class="tabs"><button class="tab active" data-tab="json">Paste Curriculum JSON</button><button class="tab" data-tab="prompt">ChatGPT Prompt</button></div>
+<div id="jsonPanel" class="panel active">
+<textarea id="json" placeholder='把 ChatGPT 回傳的 Curriculum JSON 貼在這裡…'></textarea>
+<div class="row" style="margin-top:10px"><button id="preview" class="btn primary">Preview Curriculum</button></div>
+</div>
+<div id="promptPanel" class="panel">
+<div class="note" style="background:#f4f1f5">把下面這段指令連同 PDF 一起給 ChatGPT。它會輸出網站可以直接匯入的 JSON。</div>
+<textarea id="promptText" readonly style="min-height:380px"></textarea>
+<button id="copyPrompt" class="btn primary" style="margin-top:10px">Copy Prompt</button>
+</div>
+<div id="msg" class="status"></div>
+</div>
+
+<div class="card">
+<h2>Curriculum Preview</h2><div class="note"><b>人工確認區：</b>每個單字下方都有 Edit / 分類移動 / Skip。AI 分錯 Main 或 Extended 時直接移動即可；像 mother 已經很熟，可按「I Know This / Skip」，保留教材紀錄但不安排刻意練習。</div>
+<input id="title" class="title" value="Untitled Lesson">
+<div class="note" style="background:#fff7e9;border:1px solid #ead9b8">
+<b>單字可以人工決定：</b> AI 分類只是初稿。你可以編輯單字、把字在 Main / Extended 之間移動、標記「已經很熟・不用練」，或真的從 Curriculum 刪除。
+</div>
+<div class="section"><div class="head"><h3>1. Lesson Concept</h3><span id="n1" class="count">0</span></div><div id="concept"></div></div>
+
+<div class="section unclassified-zone">
+  <div class="vocab-label">NEEDS CLASSIFICATION</div>
+  <div class="head"><h3>Unclassified Vocabulary</h3><div><span id="n0" class="count">0</span> <button class="mini" onclick="addVocab('unc')">＋ Add Word</button></div></div>
+  <div class="tiny">⚠️ AI 無法確定是 Main 還是 Extended 的字會先放這裡，方便你優先處理。</div>
+  <div id="unc"></div>
+</div>
+<div class="section vocab-section main-zone"><div class="vocab-label">CORE TARGETS</div><div class="head"><h3>2. Main Vocabulary</h3><div><span id="n2" class="count">0</span> <button class="mini" onclick="addVocab('main')">＋ Add Word</button></div></div><div class="tiny">🟣 主要字彙｜這一區才是本課主要學習目標</div><div id="main"></div></div>
+<div class="section vocab-section ext-zone"><div class="vocab-label">SUPPLEMENTARY / EXTENDED</div><div class="head"><h3>3. Extended Vocabulary</h3><div><span id="n3" class="count">0</span> <button class="mini" onclick="addVocab('ext')">＋ Add Word</button></div></div><div class="tiny">🌿 延伸字彙｜補充、Additional / Extended Vocabulary</div><div id="ext"></div></div>
+<div class="section"><div class="head"><h3>4. Grammar / Know-how</h3><span id="n4" class="count">0</span></div><div id="grammar"></div></div>
+<div class="section"><div class="head"><h3>5. Conversation Reference</h3><span id="n5" class="count">0</span></div><div id="conv"></div></div>
+<div class="row"><button id="save" class="btn primary">Confirm & Save Lesson</button><button id="clear" class="btn ghost">Clear Preview</button></div>
+</div>
+</div></section>
+
+<div id="modalback" class="modalback">
+  <div class="modal">
+    <h3>✏️ 編輯單字</h3>
+    <div class="field"><label>單字 / 片語</label><input id="eTerm"></div>
+    <div class="field"><label>意思</label><input id="eMeaning"></div>
+    <div class="field"><label>詞性</label><input id="ePos"></div>
+    <div class="field"><label>Examples（每行一個）</label><textarea id="eExamples" class="small"></textarea></div>
+    <div class="field"><label>Source pages（逗號分隔）</label><input id="ePages"></div>
+    <div class="row"><button id="saveEdit" class="btn primary">儲存單字修改</button><button id="cancelEdit" class="btn ghost">Cancel</button></div>
+  </div>
+</div>
+
+
+
+<section id="correction" class="page">
+<div class="page-head"><div><div class="eyebrow">CORRECTION REVIEW</div><h2>批改訂正</h2>
+<p>AI 批改回貼後，在這裡看原答案、建議答案與原因，再自己重新回答一次。完成訂正不等於 Mastered。</p></div></div>
+<div class="card"><div id="correctionSummary" class="stats"></div><div id="correctionList" style="margin-top:18px"></div></div>
+</section>
+<section id="review" class="page">
+<div class="page-head"><div><div class="eyebrow">REVIEW</div><h2>Review Queue</h2><p>跨教材集中需要回頭的弱項；進入本頁會自動更新。「題目未顯示」與「暫時沒時間」不會被當成英文能力問題。</p></div></div>
+<div class="card"><div class="stats" id="reviewStats"></div><div id="reviewList" style="margin-top:16px"></div></div>
+</section>
+
+<section id="speaking" class="page">
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">SPEAKING</div>
+      <h2>Speaking Handoff</h2>
+      <p>Speaking 仍由 Hanne's English OS ChatGPT Project 進行：本頁準備上下文，你到 Project 用語音對話，結束後把 SPEAKING REPORT 貼回來。</p>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>1 · 準備 Speaking Brief</h3>
+      <div class="field"><label>以哪一課作為本次主要新內容？</label><select id="speakingLesson" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:white"></select></div>
+      <div class="note">Speaking 可以自然混合舊內容。網站會把目前課程、Review 弱項與近期 Learning Session 摘要一起交給 Project；不會把「題目未顯示」算成弱點。</div>
+      <button class="btn primary" id="buildSpeakingBrief">Generate Speaking Brief</button>
+      <textarea id="speakingBrief" readonly style="min-height:330px;margin-top:12px" placeholder="按 Generate Speaking Brief…"></textarea>
+      <button class="btn primary" id="copySpeakingBrief" style="margin-top:10px">Copy Speaking Brief</button>
+    </div>
+    <div class="card">
+      <h3>2 · 從 Project 貼回 Speaking Report</h3>
+      <div class="sub">在 ChatGPT Project 完成語音練習後，請 Project 依 Brief 指定格式輸出 SPEAKING REPORT JSON，再貼回這裡。</div>
+      <textarea id="speakingReport" style="min-height:330px;margin-top:12px" placeholder='貼入 SPEAKING REPORT JSON…'></textarea>
+      <button class="btn primary" id="importSpeakingReport">Import Speaking Report</button>
+      <div id="speakingImportResult" class="status"></div>
+    </div>
+  </div>
+</section>
+<section id="learn" class="page">
+ <div class="card">
+  <h2>Learning Session</h2>
+  <div class="sub">練完整 Lesson：Concept 用辨識／分類題，Vocabulary 練意思、拼字與造句，Grammar 用選擇／填空／重組。只有開放題在 Session 結束後一次交給 GPT。</div>
+  <div class="field"><label>Lesson</label><select id="learnLesson" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:white"></select></div>
+  <div class="row" style="margin:12px 0"><button id="startLearning" class="btn primary">Start Learning Session</button><button id="endLearning" class="btn ghost" disabled>End Session</button></div>
+
+  <div id="learningArea" style="display:none">
+   <div class="timerbox"><span>Active Study</span><strong id="activeTimer">00:00</strong><button id="pauseLearning" class="mini">Pause</button><span class="tiny" id="componentTimer">Current component 00:00</span></div>
+   <div class="progressbar"><span id="learnProgress"></span></div><div id="liveState" class="note" style="margin-top:12px">
+        <b>Learning State</b><div class="tiny">開始作答後，這裡會顯示目前累積狀態。</div></div>
+   <div class="learn-layout">
+    <div class="learn-side" id="learnSide"></div>
+    <div class="learn-card">
+      <span class="component-tag" id="learnTag">—</span>
+      <div class="learn-question" id="learnQuestion">—</div>
+      <div class="tiny" id="learnHelp"></div>
+      <div id="learnAnswerArea" style="margin-top:14px"></div>
+      <div class="row" style="margin-top:14px"><button id="submitLearn" class="btn primary">Save Answer & Continue</button><button id="skipLearn" class="btn ghost">Skip</button></div>
+      <div id="learnFeedback"></div>
+    </div>
+   </div>
+  </div>
+
+  <div id="sessionComplete" style="display:none;margin-top:18px">
+   <h3>GPT Check Brief</h3>
+   <div class="tiny">需要語意／文法判斷的答案會集中在這裡。複製到 Hanne's English OS Project，批改後再把 JSON Report 貼回來。</div>
+   <textarea id="gptCheckBrief" readonly style="min-height:320px;margin-top:10px"></textarea>
+   <button id="copyCheckBrief" class="btn primary" style="margin-top:10px">Copy GPT Check Brief</button>
+   <h3 style="margin-top:24px">Import GPT Check Report</h3>
+   <textarea id="gptCheckReport" placeholder="Paste GPT CHECK REPORT JSON here…" style="min-height:220px"></textarea>
+   <button id="importCheckReport" class="btn primary" style="margin-top:10px">Import Report</button>
+   <div id="importResult" class="answerbox"></div>
+  </div>
+ </div><div class="card" id="studyAnalyticsCard" style="margin-top:14px">
+  <div class="eyebrow">STUDY ANALYTICS</div>
+  <h3 style="margin:6px 0 0">這次練習花在哪裡？</h3>
+  <div class="tiny" style="margin-top:5px">依目前 Session 的 Active Study Time 即時計算；Pause 時不增加。</div>
+  <div id="studyAnalytics"></div>
+</div>
+
+</section>
+
+</div>
+<script>
+const $=x=>document.getElementById(x),esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let current={lessonTitle:"",lessonConcept:[],unclassifiedVocabulary:[],mainVocabulary:[],extendedVocabulary:[],grammar:[],conversationReference:[]};
+let editingLessonId=null;
+
+const PROMPT=`請分析我提供的英文教材 PDF，並輸出給 Hanne's English OS 使用的 Curriculum JSON。
+
+你的任務是辨識「教材本身在教什麼」，不是重新設計課程。
+
+請嚴格區分：
+
+1. Lesson Concept
+教材中的概念、分類、定義、知識說明。
+
+2. Main Vocabulary
+教材明確作為主要學習目標的單字／片語。
+
+3. Extended Vocabulary
+教材明確作為補充、延伸、Additional / Extended Vocabulary 的單字／片語。
+
+4. Grammar / Know-how
+教材明確教授的文法規則或語言使用規則。
+教材中的例句放在對應規則底下。
+
+5. Conversation Reference
+教材中的對話、情境與應用場景。
+這部分主要提供後續 Speaking Project 作為教材情境參考，
+不要從 Conversation 任意擷取單字加入 Vocabulary。
+
+＝＝＝＝＝＝＝＝＝＝
+【教材解析原則】
+＝＝＝＝＝＝＝＝＝＝
+
+- 不要因為某個英文單字出現在 PDF 就判定為 Vocabulary。
+- Concept category、definition label、example、exercise prompt、conversation-only word 不應自動進入 Vocabulary。
+- Main Vocabulary / Extended Vocabulary 必須根據教材本身的版面、標題、分組與教學角色判斷。
+- 如果教材明確存在「主要字彙區」與「補充／延伸／additional vocabulary 區」，必須分開輸出，不可以全部放進同一個陣列。
+- Main Vocabulary 是該課主題核心、老師主要要求學習的字彙群；Extended Vocabulary 是教材另外標示為補充、延伸、additional、extra、related vocabulary 的字彙群。
+- 不要因為 Extended Vocabulary 比 Main Vocabulary 更難、更長或頁面更詳細，就把它誤判成 Main Vocabulary。
+- 不要依單字難度、頻率或你的語言知識自行決定 Main / Extended。
+- 保留老師原本設計的教材層級。
+- 不要自行新增教材沒有指定的學習目標。
+- 去除頁碼、footer、social handle、網站名稱等非教材內容。
+- 不確定的內容不要自行發明。
+- 如果某個字確定是教材學習目標，但無法判斷它屬於 Main 還是 Extended，請放入 unclassifiedVocabulary，不要硬猜。
+- Review / Exercise 題目目前不要建立成獨立 Curriculum section。
+- Lesson Completed 與 learner mastery 不在這一步判斷。
+
+＝＝＝＝＝＝＝＝＝＝
+【Vocabulary 資料規則】
+＝＝＝＝＝＝＝＝＝＝
+
+每個 Vocabulary item 儘量保存教材原本提供的：
+- term
+- meaning
+- part of speech
+- examples
+- source page
+
+如果教材沒有提供某個欄位：
+- partOfSpeech → ""
+- examples → []
+
+不要為了填滿欄位而自行創造教材沒有的例句或解釋。
+
+＝＝＝＝＝＝＝＝＝＝
+【輸出規則】
+＝＝＝＝＝＝＝＝＝＝
+
+只輸出合法 JSON。
+不要使用 Markdown code fence。
+不要在 JSON 前後加入任何說明文字。
+
+格式必須為：
+
+{
+  "lessonTitle": "",
+  "lessonConcept": [
+    {
+      "title": "",
+      "details": [],
+      "sourcePages": []
+    }
+  ],
+  "unclassifiedVocabulary": [
+    {
+      "term": "",
+      "meaning": "",
+      "partOfSpeech": "",
+      "examples": [],
+      "sourcePages": []
+    }
+  ],
+  "mainVocabulary": [
+    {
+      "term": "",
+      "meaning": "",
+      "partOfSpeech": "",
+      "examples": [],
+      "sourcePages": []
+    }
+  ],
+  "extendedVocabulary": [
+    {
+      "term": "",
+      "meaning": "",
+      "partOfSpeech": "",
+      "examples": [],
+      "sourcePages": []
+    }
+  ],
+  "grammar": [
+    {
+      "rule": "",
+      "examples": [],
+      "sourcePages": []
+    }
+  ],
+  "conversationReference": [
+    {
+      "title": "",
+      "content": [],
+      "sourcePages": []
+    }
+  ]
+}`;
+$("promptText").value=PROMPT;
+
+document.querySelectorAll(".nav button").forEach(b=>b.onclick=()=>{document.querySelectorAll(".nav button").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$(b.dataset.page).classList.add("active");renderLessons();if(b.dataset.page==="learn")populateLearnLessons();if(b.dataset.page==="review")renderReview();if(b.dataset.page==="correction")renderCorrections();if(b.dataset.page==="speaking")populateSpeakingLessons()});
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll("#add .panel").forEach(x=>x.classList.remove("active"));b.classList.add("active");$(b.dataset.tab+"Panel").classList.add("active")});
+
+function msg(t,bad=false){$("msg").textContent=t;$("msg").className="status show"+(bad?" bad":"")}
+function norm(r){return {
+lessonTitle:r.lessonTitle||"",
+lessonConcept:Array.isArray(r.lessonConcept)?r.lessonConcept:[],
+unclassifiedVocabulary:Array.isArray(r.unclassifiedVocabulary)?r.unclassifiedVocabulary:[],
+mainVocabulary:Array.isArray(r.mainVocabulary)?r.mainVocabulary:[],
+extendedVocabulary:Array.isArray(r.extendedVocabulary)?r.extendedVocabulary:[],
+grammar:Array.isArray(r.grammar)?r.grammar:[],
+conversationReference:Array.isArray(r.conversationReference)?r.conversationReference:[]
+}}
+function pages(x){return x.sourcePages?.length?`<div class=pages>Page ${esc(x.sourcePages.join(", "))}</div>`:""}
+function render(){
+ const r=current,a=[r.lessonConcept,r.mainVocabulary,r.extendedVocabulary,r.grammar,r.conversationReference];
+ $("n0").textContent=r.unclassifiedVocabulary.length;
+ a.forEach((x,i)=>$("n"+(i+1)).textContent=x.length);$("title").value=r.lessonTitle||"Untitled Lesson";
+ $("concept").innerHTML=r.lessonConcept.length?r.lessonConcept.map(x=>`<div class=item><div class=term>${esc(x.title)}</div><div class=tiny>${esc((x.details||[]).join(" · "))}</div>${pages(x)}</div>`).join(""):'<div class=empty>尚無資料</div>';
+ const voc=(arr,type)=>{
+   if(!arr.length)return '<div class=empty>尚無資料</div>';
+   let indexed=arr.map((x,i)=>({x,i})).sort((a,b)=>(a.x.excludeFromPractice?1:0)-(b.x.excludeFromPractice?1:0));
+   return indexed.map(({x,i})=>{
+   let mastered=!!x.excludeFromPractice;
+   return `<div class="item ${mastered?"mastered":""}">
+   <div class=term>${esc(x.term)}${x.partOfSpeech?` <span class="tiny">(${esc(x.partOfSpeech)})</span>`:""}${mastered?`<span class="badge skip">不安排練習</span>`:""}</div>
+   <div class=tiny>${esc(x.meaning||"")}</div>
+   <div class="tiny" style="margin-top:6px"><b>練習狀態：</b>${mastered?"已熟悉，不安排刻意練習":"需要納入學習／複習"}</div>
+   ${(x.examples||[]).length?`<div class=tiny style="margin-top:5px">Examples: ${esc(x.examples.join(" ｜ "))}</div>`:""}
+   ${pages(x)}
+   <div class=editbar>
+     <button class=mini onclick="editVocab('${type}',${i})">✏️ 編輯</button>
+     <button class=mini onclick="moveVocab('${type}',${i})">${type==="main"?"Move to Extended":"Move to Main"}</button>
+     <button class="mini ok" onclick="togglePractice('${type}',${i})">${mastered?"Include in Practice":"Already Mastered / Skip Practice"}</button>
+     <button class="mini warn" onclick="deleteVocab('${type}',${i})">🗑 刪除</button>
+   </div></div>`}).join("");
+ };
+ $("unc").innerHTML=voc(r.unclassifiedVocabulary,"unc");
+ $("main").innerHTML=voc(r.mainVocabulary,"main");
+ $("ext").innerHTML=voc(r.extendedVocabulary,"ext");
+ $("grammar").innerHTML=r.grammar.length?r.grammar.map(x=>`<div class=item><div class=term>${esc(x.rule)}</div><div class=tiny>${esc((x.examples||[]).join(" ｜ "))}</div>${pages(x)}</div>`).join(""):'<div class=empty>尚無資料</div>';
+ $("conv").innerHTML=r.conversationReference.length?r.conversationReference.map(x=>`<div class=item><div class=term>${esc(x.title||"Conversation")}</div><div class=tiny>${esc((x.content||[]).join(" ｜ "))}</div>${pages(x)}</div>`).join(""):'<div class=empty>尚無資料</div>';
+}
+$("preview").onclick=()=>{try{let t=$("json").value.trim().replace(/^```json\s*/i,"").replace(/```$/,"").trim();current=norm(JSON.parse(t));editingLessonId=null;render();$("save").textContent="Confirm & Save Lesson";msg("✓ JSON 讀取成功。請確認右側 Curriculum Map。")}catch(e){msg("JSON 格式錯誤："+e.message,true)}};
+$("clear").onclick=()=>{current=norm({});editingLessonId=null;render();$("json").value="";$("save").textContent="Confirm & Save Lesson";msg("Preview 已清除。")};
+$("save").onclick=()=>{if(!current.lessonTitle&&$("title").value==="Untitled Lesson"){msg("請先 Preview 一份 Curriculum JSON。",true);return}let lessons=JSON.parse(localStorage.getItem("english_os_lessons")||"[]");let item={id:"lesson_"+Date.now(),title:$("title").value.trim()||current.lessonTitle||"Untitled Lesson",pdfUrl:$("pdfurl").value.trim(),curriculum:{...current,lessonTitle:$("title").value.trim()||current.lessonTitle},createdAt:new Date().toISOString()};lessons.push(item);localStorage.setItem("english_os_lessons",JSON.stringify(lessons));msg("✓ Lesson 已儲存。這份 Lesson 已可直接進入 Learning Session；標記 excludeFromPractice 的熟悉字彙會跳過正式練習。");renderLessons();populateLearnLessons()};
+function renderLessons(){let a=JSON.parse(localStorage.getItem("english_os_lessons")||"[]");let h=a.length?a.map(x=>`<div class=lesson><div><b>${esc(x.title)}</b><div class=tiny>${new Date(x.updatedAt||x.createdAt).toLocaleString()} · 未分類 ${x.curriculum.unclassifiedVocabulary?.length||0} · Main ${x.curriculum.mainVocabulary?.length||0} · Extended ${x.curriculum.extendedVocabulary?.length||0}</div></div><div class="row"><button class="btn ghost" onclick="openLesson('${x.id}')">Open / Edit</button><button class="btn danger" onclick="delLesson('${x.id}')">Delete</button></div></div>`).join(""):'<div class=empty>還沒有儲存教材。</div>';$("lessons").innerHTML=h;$("dashLessons").innerHTML=h}
+window.openLesson=id=>{
+ let lessons=JSON.parse(localStorage.getItem("english_os_lessons")||"[]");
+ let x=lessons.find(v=>v.id===id);if(!x)return;
+ editingLessonId=id;current=norm(JSON.parse(JSON.stringify(x.curriculum)));
+ $("pdfurl").value=x.pdfUrl||"";showUrl(x.pdfUrl||"");
+ $("json").value=JSON.stringify(current,null,2);
+ render();$("save").textContent="Save Curriculum Changes";
+ document.querySelectorAll(".nav button").forEach(b=>b.classList.toggle("active",b.dataset.page==="add"));
+ document.querySelectorAll(".page").forEach(pg=>pg.classList.toggle("active",pg.id==="add"));
+ msg("已載入已保存的 Curriculum。你現在的修改會更新同一份 Lesson，不會新增重複教材。");
+};
+window.delLesson=id=>{let a=JSON.parse(localStorage.getItem("english_os_lessons")||"[]").filter(x=>x.id!==id);localStorage.setItem("english_os_lessons",JSON.stringify(a));renderLessons();};
+
+let editing=null;
+function arrFor(type){return type==="main"?current.mainVocabulary:type==="ext"?current.extendedVocabulary:current.unclassifiedVocabulary}
+window.addVocab=(type)=>{
+ let arr=arrFor(type);
+ arr.push({term:"",meaning:"",partOfSpeech:"",examples:[],sourcePages:[],excludeFromPractice:false});
+ editVocab(type,arr.length-1);
+};
+window.editVocab=(type,i)=>{
+ editing={type,i};let x=arrFor(type)[i];
+ $("eTerm").value=x.term||"";$("eMeaning").value=x.meaning||"";$("ePos").value=x.partOfSpeech||"";
+ $("eExamples").value=(x.examples||[]).join("\n");$("ePages").value=(x.sourcePages||[]).join(", ");
+ $("modalback").classList.add("show");
+};
+$("cancelEdit").onclick=()=>{$("modalback").classList.remove("show");editing=null};
+$("saveEdit").onclick=()=>{
+ if(!editing)return;let x=arrFor(editing.type)[editing.i];
+ x.term=$("eTerm").value.trim();x.meaning=$("eMeaning").value.trim();x.partOfSpeech=$("ePos").value.trim();
+ x.examples=$("eExamples").value.split(/\n/).map(v=>v.trim()).filter(Boolean);
+ x.sourcePages=$("ePages").value.split(",").map(v=>parseInt(v.trim())).filter(Number.isFinite);
+ $("modalback").classList.remove("show");editing=null;render();msg("✓ Vocabulary 已更新。");
+};
+window.moveVocab=(type,i,target)=>{
+ let from=arrFor(type),x=from.splice(i,1)[0];
+ let dest=target==="main"?current.mainVocabulary:target==="ext"?current.extendedVocabulary:current.unclassifiedVocabulary;
+ dest.push(x);render();msg("✓ 已移動 Vocabulary 分類。");
+};
+window.togglePractice=(type,i)=>{
+ let x=arrFor(type)[i];x.excludeFromPractice=!x.excludeFromPractice;render();
+ msg(x.excludeFromPractice?"✓ 已標記為熟悉：之後規則型練習不會優先安排這個字。":"✓ 已重新加入練習範圍。");
+};
+window.deleteVocab=(type,i)=>{
+ let x=arrFor(type)[i];
+ if(confirm(`確定要把「${x.term}」從 Curriculum 移除嗎？\n\n如果只是已經很熟，請不要刪除；改按「已經很熟・不用練」，這樣教材紀錄仍會保留。`)){
+   arrFor(type).splice(i,1);render();msg("✓ 已從 Curriculum 移除。");
+ }
+};
+$("modalback").onclick=e=>{if(e.target===$("modalback")){$("modalback").classList.remove("show");editing=null}};
+
+$("copyPrompt").onclick=async()=>{await navigator.clipboard.writeText(PROMPT);msg("✓ ChatGPT Prompt 已複製。")};
+let old=localStorage.getItem("english_os_pdf_reference")||"";$("pdfurl").value=old;showUrl(old);
+function showUrl(v){$("savedurl").classList.toggle("show",!!v);$("savedlink").textContent=v;$("savedlink").href=v||"#"}
+$("pdfurl").oninput=e=>{let v=e.target.value.trim();if(/^https?:\/\//.test(v)){localStorage.setItem("english_os_pdf_reference",v);showUrl(v)}};
+$("openurl").onclick=()=>{let v=$("pdfurl").value.trim();if(v)window.open(v,"_blank")};$("clearurl").onclick=()=>{localStorage.removeItem("english_os_pdf_reference");$("pdfurl").value="";showUrl("")};
+
+
+
+// ===== Learning Session V1 =====
+let learnItems=[],learnIndex=0,learnSession=null,learnTick=null,learnPaused=false;
+
+function getLesson(id){
+ let lessons=JSON.parse(localStorage.getItem("english_os_lessons")||"[]");
+ return lessons.find(x=>x.id===id)||null;
+}
+function populateLearnLessons(){
+ let lessons=JSON.parse(localStorage.getItem("english_os_lessons")||"[]");
+ $("learnLesson").innerHTML=lessons.length?lessons.map(x=>`<option value="${x.id}">${esc(x.title)}</option>`).join(""):'<option value="">尚無教材</option>';
+}
+function secondsText(n){n=Math.max(0,Math.floor(n));return String(Math.floor(n/60)).padStart(2,"0")+":"+String(n%60).padStart(2,"0")}
+function shuffleCopy(a){return [...a].sort(()=>Math.random()-.5)}
+function makeLearningItems(lesson){
+ let c=lesson.curriculum,items=[], concepts=(c.lessonConcept||[]).filter(x=>x.title);
+ function conceptText(){return concepts.map(x=>[x.title,...(x.details||[])].join(" ")).join(" ").toLowerCase()}
+ let ct=conceptText();
+
+ // Concept practice: test the concept with new examples, not textbook story recall.
+ // Noun categories: Person / Place / Animal / Thing / Idea
+ let nounCats=["Person","Place","Animal","Thing","Idea"];
+ if(nounCats.every(k=>ct.includes(k.toLowerCase())) || (ct.includes("person")&&ct.includes("place")&&ct.includes("thing")&&ct.includes("idea"))){
+   [
+    ["brother","Person","brother 指一個人，因此屬於 Person。"],
+    ["Taiwan","Place","Taiwan 是地點，因此屬於 Place。"],
+    ["dog","Animal","dog 是動物，因此屬於 Animal。"],
+    ["table","Thing","table 是物品，因此屬於 Thing。"],
+    ["happiness","Idea","happiness 是抽象概念，因此屬於 Idea。"]
+   ].forEach((q,i)=>items.push({id:"concept_nouncat_"+i,component:"Lesson Concept",kind:"choice",target:"Noun categories",question:`「${q[0]}」屬於哪一類 Noun？`,help:"請用名詞分類概念判斷，不需要回想教材例句。",choices:shuffleCopy(nounCats),answer:q[1],explanation:q[2],needsGPT:false}));
+ }
+ // Subject / Object application
+ if(ct.includes("subject")&&ct.includes("object")){
+   [
+    ["My brother likes music.","brother","Subject","在 My brother likes music. 中，brother 是執行 likes 的主體，所以是 Subject。"],
+    ["I called my brother.","brother","Object","在 I called my brother. 中，brother 是 called 的受詞，所以是 Object。"]
+   ].forEach((q,i)=>items.push({id:"concept_role_"+i,component:"Lesson Concept",kind:"choice",target:"Subject / Object",question:`在「${q[0]}」中，${q[1]} 是什麼？`,help:"判斷名詞在句子中的功能。",choices:["Subject","Object"],answer:q[2],explanation:q[3],needsGPT:false}));
+ }
+ // Generic fallback only for concepts that were not covered by deterministic templates.
+ if(!items.length){
+   concepts.forEach((x,i)=>items.push({id:"concept_open_"+i,component:"Lesson Concept",kind:"open",target:x.title,question:`請用自己的話說明「${x.title}」這個核心概念，並舉一個新的例子。`,help:"不考教材故事或例句記憶；請展現你是否理解概念。",referenceAnswer:(x.details||[]).join(" ｜ "),needsGPT:true}));
+ }
+
+ // Vocabulary topic pages: all words together for English→Chinese, then all words together for Chinese→English.
+ let vocab=[...(c.mainVocabulary||[]).map(x=>({...x,_group:"Main"})),...(c.extendedVocabulary||[]).map(x=>({...x,_group:"Extended"}))].filter(x=>!x.excludeFromPractice&&x.term);
+
+ if(vocab.length){
+   items.push({
+     id:"v_topic_meaning",component:"Vocabulary",kind:"vocab_topic_meaning",
+     target:"English → Chinese",vocab:vocab,question:"English → Chinese",
+     help:"所有單字集中在同一頁。可以留白，也可以按「我忘記了」。",needsGPT:true
+   });
+   items.push({
+     id:"v_topic_spelling",component:"Vocabulary",kind:"vocab_topic_spelling",
+     target:"Chinese → English",vocab:vocab,question:"Chinese → English",
+     help:"所有單字集中在同一頁。可以留白，也可以按「我忘記了」。",needsGPT:true
+   });
+ }
+
+ vocab.forEach((x,i)=>{
+   items.push({
+     id:"v_sentence_"+i,component:"Vocabulary",kind:"open",target:x.term,
+     question:`Use “${x.term}” in your own sentence.`,
+     help:`${x._group} Vocabulary · Production`,needsGPT:true,vocabRound:"production"
+   });
+ });
+ // Grammar
+ (c.grammar||[]).forEach((x,i)=>{
+   let e=(x.examples||[]).filter(Boolean);
+   if(e.length){let correct=e[0],wrong=makeGrammarDistractor(correct);
+    if(wrong&&wrong!==correct&&!wrong.startsWith("Not: "))items.push({id:"gm_"+i,component:"Grammar / Know-how",kind:"choice",target:x.rule,question:"依照這個 Grammar / Know-how 規則，哪個句子正確？",help:x.rule,choices:shuffleCopy([correct,wrong]),answer:correct,explanation:`依據規則：${x.rule}；正確示例：${correct}`,needsGPT:false});
+    let w=correct.replace(/[.!?]+$/,"").split(/\s+/).filter(Boolean);
+    if(w.length>=3&&w.length<=10)items.push({id:"go_"+i,component:"Grammar / Know-how",kind:"reorder",target:x.rule,question:"把下面的字重新排列成正確句子：",help:shuffleCopy(w).join(" / "),answer:w.join(" "),explanation:`依照「${x.rule}」，正確句子是：${w.join(" ")}.`,needsGPT:false});
+   }
+   items.push({id:"ga_"+i,component:"Grammar / Know-how",kind:"open",target:x.rule,question:`請依照這個規則自己寫一個新的例句：${x.rule}`,help:"Grammar application · Session 結束後一次交 GPT。",needsGPT:true});
+ });
+ return items;
+}
+function makeGrammarDistractor(sentence){
+ let t=String(sentence);
+ // Conservative deterministic distractors for common capitalization / be-verb patterns.
+ if(/\b(Mom|Dad|Son|Aunt|Uncle|Cousin)\b/.test(t))
+   return t.replace(/\b(Mom|Dad|Son|Aunt|Uncle|Cousin)\b/g,m=>m.toLowerCase());
+ if(/\b(mom|dad|son|aunt|uncle|cousin)\b/.test(t))
+   return t.replace(/\b(mom|dad|son|aunt|uncle|cousin)\b/g,m=>m.charAt(0).toUpperCase()+m.slice(1));
+ if(/\bis\b/.test(t)) return t.replace(/\bis\b/,"are");
+ if(/\bare\b/.test(t)) return t.replace(/\bare\b/,"is");
+ return "Not: "+t;
+}
+
+function lessonStateKey(id){return "english_os_lesson_state_"+id}
+function getLessonState(id){
+  return JSON.parse(localStorage.getItem(lessonStateKey(id))||'{"vocabulary":{},"concept":{},"grammar":{}}');
+}
+function saveLessonState(id,state){
+  localStorage.setItem(lessonStateKey(id),JSON.stringify(state));
+}
+function ensureVocabState(state,term){
+  if(!state.vocabulary[term]){
+    state.vocabulary[term]={
+      meaning:{attempts:0,score:0,status:"not_checked"},
+      recall:{attempts:0,score:0,status:"not_checked"},
+      spelling:{attempts:0,score:0,status:"not_checked"},
+      production:{attempts:0,score:0,status:"not_checked"},
+      lastSeen:null
+    };
+  }
+  return state.vocabulary[term];
+}
+function stateLabel(score,attempts){
+  if(!attempts)return "not_checked";
+  let r=score/attempts;
+  return r>=.85?"strong":r>=.5?"developing":"weak";
+}
+function updateAutoLearningState(record){
+  let state=getLessonState(learnSession.lessonId), now=new Date().toISOString();
+  if(record.component==="Vocabulary" && record.kind==="exact"){
+    let v=ensureVocabState(state,record.target);
+    v.recall.attempts++;v.spelling.attempts++;
+    if(record.autoCorrect){v.recall.score++;v.spelling.score++}
+    v.recall.status=stateLabel(v.recall.score,v.recall.attempts);
+    v.spelling.status=stateLabel(v.spelling.score,v.spelling.attempts);
+    v.lastSeen=now;
+  }else if(record.component==="Lesson Concept" && record.autoCorrect!==undefined){
+    let x=state.concept[record.target]||{attempts:0,score:0,status:"not_checked"};
+    x.attempts++;if(record.autoCorrect)x.score++;
+    x.status=stateLabel(x.score,x.attempts);x.lastSeen=now;state.concept[record.target]=x;
+  }else if(record.component==="Grammar / Know-how" && record.autoCorrect!==undefined){
+    let x=state.grammar[record.target]||{attempts:0,score:0,status:"not_checked"};
+    x.attempts++;if(record.autoCorrect)x.score++;
+    x.status=stateLabel(x.score,x.attempts);x.lastSeen=now;state.grammar[record.target]=x;
+  }
+  saveLessonState(learnSession.lessonId,state);
+  renderLiveState();
+}
+function renderLiveState(){
+  if(!learnSession || !$("liveState"))return;
+  let state=getLessonState(learnSession.lessonId);
+  let vocab=Object.entries(state.vocabulary||{});
+  let current=learnItems[learnIndex];
+  let currentHtml="";
+  if(current && current.component==="Vocabulary"){
+    let v=state.vocabulary[current.target];
+    if(v){
+      currentHtml=`<div style="margin-top:6px"><b>${esc(current.target)}</b><br>
+      Meaning: ${v.meaning.status} · Recall: ${v.recall.status} · Spelling: ${v.spelling.status} · Production: ${v.production.status}</div>`;
+    }
+  }
+  let needs=vocab.filter(([_,v])=>["weak","developing"].includes(v.meaning.status)||["weak","developing"].includes(v.recall.status)||["weak","developing"].includes(v.spelling.status)||["weak","developing"].includes(v.production.status)).length;
+  $("liveState").innerHTML=`<b>Learning State</b>${currentHtml}<div class="tiny" style="margin-top:5px">Vocabulary tracked: ${vocab.length} · Needs review: ${needs}</div>`;
+}
+function applyGPTReportToLearningState(report){
+  let state=getLessonState(learnSession.lessonId), now=new Date().toISOString();
+  (report.gradedAnswers||[]).forEach(g=>{
+    let original=learnSession.answers.find(a=>a.id===g.id);
+    if(!original)return;
+    let val=g.status==="correct"?1:(g.status==="developing"?0.5:0);
+    if(original.component==="Vocabulary"){
+      let v=ensureVocabState(state,original.target);
+      if(original.id.startsWith("v_mean_")){
+        v.meaning.attempts++;v.meaning.score+=val;
+        v.meaning.status=stateLabel(v.meaning.score,v.meaning.attempts);
+      }else if(original.id.startsWith("v_sentence_")){
+        v.production.attempts++;v.production.score+=val;
+        v.production.status=stateLabel(v.production.score,v.production.attempts);
+      }else if(original.id.startsWith("v_spell_")){
+        v.recall.attempts++;v.spelling.attempts++;
+        v.recall.score+=val;v.spelling.score+=val;
+        v.recall.status=stateLabel(v.recall.score,v.recall.attempts);
+        v.spelling.status=stateLabel(v.spelling.score,v.spelling.attempts);
+      }
+      v.lastSeen=now;
+    }else if(original.component==="Lesson Concept"){
+      let x=state.concept[original.target]||{attempts:0,score:0,status:"not_checked"};
+      x.attempts++;x.score+=val;x.status=stateLabel(x.score,x.attempts);x.lastSeen=now;state.concept[original.target]=x;
+    }else if(original.component==="Grammar / Know-how"){
+      let x=state.grammar[original.target]||{attempts:0,score:0,status:"not_checked"};
+      x.attempts++;x.score+=val;x.status=stateLabel(x.score,x.attempts);x.lastSeen=now;state.grammar[original.target]=x;
+    }
+  });
+  saveLessonState(learnSession.lessonId,state);
+  renderLiveState();
+}
+
+$("startLearning").onclick=()=>{
+ try{
+ let id=$("learnLesson").value,lesson=getLesson(id);if(!lesson){msg("找不到可開始的 Lesson。請先到 Saved Lessons 確認教材已儲存。",true);return}
+ learnItems=makeLearningItems(lesson);if(!learnItems.length){msg("這份 Lesson 沒有可建立的練習。",true);return}
+ learnIndex=0;learnPaused=false;
+ learnSession={id:"sess_"+Date.now(),lessonId:id,lessonTitle:lesson.title,startedAt:new Date().toISOString(),activeSeconds:0,pausedSeconds:0,componentSeconds:{},answers:[],status:"in_progress"};
+ $("learningArea").style.display="block";$("sessionComplete").style.display="none";$("endLearning").disabled=false;
+ $("pauseLearning").textContent="Pause";
+ if(learnTick)clearInterval(learnTick);
+ learnTick=setInterval(()=>{
+   if(!learnSession)return;
+   if(learnPaused)learnSession.pausedSeconds++;
+   else{
+     learnSession.activeSeconds++;
+     let comp=studyStageKey(learnItems[learnIndex]);
+     learnSession.componentSeconds[comp]=(learnSession.componentSeconds[comp]||0)+1;
+   }
+   renderTimer();
+ },1000);
+ renderLearning();
+ msg("✓ Learning Session 已開始。");
+ }catch(e){
+   console.error(e);
+   msg("Start Learning 發生錯誤："+e.message,true);
+ }
+};
+function studyStageKey(item){
+ if(!item)return "Other";
+ if(item.kind==="vocab_topic_meaning")return "Vocabulary · 英翻中";
+ if(item.kind==="vocab_topic_spelling")return "Vocabulary · 中翻英 / 拼字";
+ if(item.component==="Vocabulary"&&item.vocabRound==="production")return "Vocabulary · 造句";
+ if(item.component==="Lesson Concept")return "Lesson Concept";
+ if(item.component==="Grammar / Know-how")return "Grammar / Know-how";
+ return item.component||"Other";
+}
+function stageTimeSummary(){
+ if(!learnSession)return "";
+ let order=["Lesson Concept","Vocabulary · 英翻中","Vocabulary · 中翻英 / 拼字","Vocabulary · 造句","Grammar / Know-how"];
+ return order.map(k=>`${k}: ${secondsText(learnSession.componentSeconds[k]||0)}`).join("\n");
+}
+function stageQuestionCount(stage){
+ if(!learnItems?.length)return 0;
+ if(stage==="Lesson Concept")return learnItems.filter(x=>x.component==="Lesson Concept").length;
+ if(stage==="Vocabulary · 英翻中"){
+   let x=learnItems.find(x=>x.kind==="vocab_topic_meaning");return x?.vocab?.length||0;
+ }
+ if(stage==="Vocabulary · 中翻英 / 拼字"){
+   let x=learnItems.find(x=>x.kind==="vocab_topic_spelling");return x?.vocab?.length||0;
+ }
+ if(stage==="Vocabulary · 造句")return learnItems.filter(x=>x.component==="Vocabulary"&&x.vocabRound==="production").length;
+ if(stage==="Grammar / Know-how")return learnItems.filter(x=>x.component==="Grammar / Know-how").length;
+ return 0;
+}
+function completedStageUnits(stage){
+ if(!learnSession)return 0;
+ if(stage==="Vocabulary · 英翻中"||stage==="Vocabulary · 中翻英 / 拼字"){
+   let kind=stage==="Vocabulary · 英翻中"?"vocab_topic_meaning":"vocab_topic_spelling";
+   let item=learnItems.find(x=>x.kind===kind); if(!item)return 0;
+   let st=learnSession.answers.find(a=>a.id===item.id); if(!st)return 0;
+   let isMeaning=kind==="vocab_topic_meaning";
+   return item.vocab.filter(v=>{
+     let r=st.rows?.[v.term]||{};
+     return isMeaning ? !!(r.meaningAnswer||r.meaningForgot||r.meaningPromptMissing)
+                      : !!(r.spellingAnswer||r.spellingForgot||r.spellingPromptMissing);
+   }).length;
+ }
+ let items=learnItems.filter(x=>studyStageKey(x)===stage);
+ return items.filter(isItemCompleted).length;
+}
+function historicalStageStats(stage){
+ let sessions=JSON.parse(localStorage.getItem("english_os_sessions")||"[]");
+ let vals=[];
+ sessions.forEach(ss=>{
+   let sec=ss.componentSeconds?.[stage]||0;
+   let units=ss.stageUnitCounts?.[stage]||0;
+   if(sec>0&&units>0)vals.push(sec/units);
+ });
+ vals.sort((a,b)=>a-b);
+ if(!vals.length)return null;
+ let mid=Math.floor(vals.length/2),median=vals.length%2?vals[mid]:(vals[mid-1]+vals[mid])/2;
+ return {median,n:vals.length};
+}
+function paceLabel(current,history){
+ if(!history||history.n<3)return "建立個人基準中";
+ let ratio=current/history.median;
+ if(ratio<=0.8)return "比平常快";
+ if(ratio>=1.2)return "比平常慢";
+ return "接近平常";
+}
+function renderStudyAnalytics(){
+ let box=$("studyAnalytics");if(!box||!learnSession)return;
+ let stages=["Lesson Concept","Vocabulary · 英翻中","Vocabulary · 中翻英 / 拼字","Vocabulary · 造句","Grammar / Know-how"];
+ let activeStage=studyStageKey(learnItems[learnIndex]);
+ let rows=stages.map(stage=>{
+   let sec=learnSession.componentSeconds?.[stage]||0;
+   let total=stageQuestionCount(stage),done=completedStageUnits(stage);
+   let denom=done||total||0;
+   let per=denom?sec/denom:null;
+   let hist=per?historicalStageStats(stage):null;
+   return {stage,sec,total,done,per,hist,label:per?paceLabel(per,hist):"—"};
+ });
+ let active=rows.find(r=>r.stage===activeStage)||rows[0];
+ box.innerHTML=`
+   <div class="analytics-grid">
+    <div class="analytics-card"><h4>目前環節</h4><div class="analytics-big">${esc(activeStage)}</div><div class="analytics-sub">${secondsText(active?.sec||0)} Active</div></div>
+    <div class="analytics-card"><h4>目前完成度</h4><div class="analytics-big">${active?.done||0} / ${active?.total||0}</div><div class="analytics-sub">${active?.per?`${Math.round(active.per)} 秒 / 題（目前估算）`:"完成作答後開始估算"}</div></div>
+   </div>
+   <table class="analytics-table">
+    <thead><tr><th>環節</th><th>Active</th><th>完成</th><th>平均</th><th>與自己比較</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr><td>${esc(r.stage)}</td><td>${secondsText(r.sec)}</td><td>${r.done}/${r.total}</td><td>${r.per?Math.round(r.per)+" 秒/題":"—"}</td><td><span class="analytics-badge">${esc(r.label)}</span></td></tr>`).join("")}</tbody>
+   </table>
+   <div class="tiny" style="margin-top:10px">至少累積 3 次有可比較資料的 Session 後，才開始顯示「比平常快 / 慢」；之前只建立你的個人 baseline，不會武斷設定固定秒數。</div>`;
+}
+
+// ---------- Cloud sync ----------
+const CLOUD_URL="https://tsuyldllmrjqwpkdhnge.supabase.co";
+const CLOUD_KEY="sb_publishable_cKG_N9YsY6K7gPadRwVOqw_uEClmhEN";
+const CLOUD_DEVICE_KEY="hanne_primary_20260913";
+const _lsSet=Storage.prototype.setItem,_lsRemove=Storage.prototype.removeItem;
+let syncApplying=false,syncVersion=0,syncTimer=null;
+function isSyncKey(k){return String(k).startsWith("english_os_")&&k!=="english_os_voice"}
+function cloudHeaders(extra={}){return {"apikey":CLOUD_KEY,"Authorization":"Bearer "+CLOUD_KEY,"Content-Type":"application/json",...extra}}
+function localSyncSnapshot(){let d={};for(let i=0;i<localStorage.length;i++){let k=localStorage.key(i);if(isSyncKey(k))d[k]=localStorage.getItem(k)}return d}
+function applyServerSnapshot(d){syncApplying=true;try{Object.keys(d||{}).forEach(k=>{if(isSyncKey(k))_lsSet.call(localStorage,k,d[k])})}finally{syncApplying=false}}
+async function cloudRead(){try{let r=await fetch(`${CLOUD_URL}/rest/v1/english_os_state?device_key=eq.${CLOUD_DEVICE_KEY}&select=state,version`,{headers:cloudHeaders(),cache:"no-store"});if(!r.ok)throw new Error();return (await r.json())[0]||null}catch(e){return null}}
+async function cloudSave(){if(syncApplying)return;let next=Date.now();try{let r=await fetch(`${CLOUD_URL}/rest/v1/english_os_state?on_conflict=device_key`,{method:"POST",headers:cloudHeaders({"Prefer":"resolution=merge-duplicates"}),body:JSON.stringify({device_key:CLOUD_DEVICE_KEY,state:localSyncSnapshot(),version:next,updated_at:new Date().toISOString()})});if(!r.ok)throw new Error();syncVersion=next;updateSyncStatus(true)}catch(e){updateSyncStatus(false)}}
+function queueCloudSave(){if(syncApplying)return;clearTimeout(syncTimer);syncTimer=setTimeout(cloudSave,350)}
+Storage.prototype.setItem=function(k,v){_lsSet.call(this,k,v);if(this===localStorage&&isSyncKey(k))queueCloudSave()};
+Storage.prototype.removeItem=function(k){_lsRemove.call(this,k);if(this===localStorage&&isSyncKey(k))queueCloudSave()};
+async function syncInit(){let remote=await cloudRead(),local=localSyncSnapshot();if(remote?.state&&Object.keys(remote.state).length){applyServerSnapshot(remote.state);syncVersion=+remote.version||0}else if(Object.keys(local).length)await cloudSave();updateSyncStatus(true);loadMobileAddress()}
+async function syncPoll(){let remote=await cloudRead();if(!remote){updateSyncStatus(false);return}updateSyncStatus(true);let v=+remote.version||0;if(v>syncVersion){syncVersion=v;applyServerSnapshot(remote.state||{});renderLessons();populateLearnLessons();populateSpeakingLessons();if($("review")?.classList.contains("active"))renderReview();if($("correction")?.classList.contains("active"))renderCorrections()}}
+function updateSyncStatus(ok){let x=$("syncStatus");if(x)x.textContent=ok?"● Cloud sync on":"● Cloud sync offline"}
+function loadMobileAddress(){let e=$("mobileAddress");if(e)e.innerHTML="<b>✓ Cloud database sync</b><br><span class=tiny>資料已可跨網路同步；外出用手機仍需要公開 HTTPS 網址。</span>"}
+// ---------- Correction Review ----------
+function correctionItems(){
+ let rs=JSON.parse(localStorage.getItem("english_os_gpt_reports")||"[]"),o=[];
+ rs.forEach((r,ri)=>(r.gradedAnswers||[]).forEach((x,ii)=>{
+  if(x.status==="correct")return;
+  o.push({ri,ii,target:x.target||x.id||"訂正題",component:x.component||"AI Check",lessonId:r.lessonId||"",original:x.original||"",suggested:x.better||"",reason:x.reason||"",corrected:!!x.corrected,correctionAnswer:x.correctionAnswer||""})
+ }));
+ return o
+}
+function renderCorrections(){
+ let box=$("correctionList"),sum=$("correctionSummary");if(!box||!sum)return;
+ let a=correctionItems(),pending=a.filter(x=>!x.corrected);
+ sum.innerHTML=`<div><b>${pending.length}</b><span>待訂正</span></div><div><b>${a.length-pending.length}</b><span>已訂正</span></div>`;
+ box.innerHTML=a.length?a.map((x,i)=>`<div class=card style="margin:12px 0"><div class=eyebrow>${esc(x.component)}</div><h3>${esc(x.target)}</h3><div class=tiny>你的原答案</div><div class=note>${esc(x.original||"—")}</div><div class=tiny style="margin-top:10px">正確 / 建議答案</div><div class=note>${esc(x.suggested||"—")}</div><div class=tiny style="margin-top:10px">原因</div><div>${esc(x.reason||"—")}</div>${x.corrected?`<div class="status show"><b>✓ 已訂正</b><div>${esc(x.correctionAnswer)}</div></div>`:`<textarea id="corr_${i}" style="min-height:90px;margin-top:12px" placeholder="看完後，自己重新回答一次…"></textarea><button class="btn primary" onclick="completeCorrection(${i})">完成訂正</button>`}</div>`).join(""):'<div class=empty>目前沒有需要訂正的 AI 批改題目。</div>'
+}
+window.completeCorrection=i=>{
+ let x=correctionItems()[i],ans=$(`corr_${i}`)?.value.trim();if(!ans){msg("請先重新回答一次。",true);return}
+ let rs=JSON.parse(localStorage.getItem("english_os_gpt_reports")||"[]");let g=rs[x.ri].gradedAnswers[x.ii];g.corrected=true;g.correctionAnswer=ans;g.correctedAt=new Date().toISOString();localStorage.setItem("english_os_gpt_reports",JSON.stringify(rs));
+ let sig=JSON.parse(localStorage.getItem("english_os_learning_signals")||"[]");sig.push({target:x.target,reason:"corrected_needs_review",component:x.component,lessonId:x.lessonId,at:new Date().toISOString()});localStorage.setItem("english_os_learning_signals",JSON.stringify(sig));
+ renderCorrections();renderReview();msg("✓ 訂正完成；之後仍會在 Review 驗收。")
+};
+// ---------- Speaking handoff ----------
+function populateSpeakingLessons(){
+ let sel=$("speakingLesson");if(!sel)return;
+ let lessons=JSON.parse(localStorage.getItem("english_os_lessons")||"[]");
+ let current=sel.value;
+ sel.innerHTML=lessons.length?lessons.map(x=>`<option value="${esc(x.id)}">${esc(x.title)}</option>`).join(""):'<option value="">尚無教材</option>';
+ if(current&&lessons.some(x=>x.id===current))sel.value=current;
+}
+function latestSessionForLesson(lessonId){
+ let ss=JSON.parse(localStorage.getItem("english_os_sessions")||"[]").filter(x=>x.lessonId===lessonId);
+ return ss.sort((a,b)=>String(b.endedAt||b.startedAt).localeCompare(String(a.endedAt||a.startedAt)))[0]||null;
+}
+function buildSpeakingBriefText(){
+ let lessonId=$("speakingLesson")?.value||"";
+ let lessons=JSON.parse(localStorage.getItem("english_os_lessons")||"[]");
+ let lesson=lessons.find(x=>x.id===lessonId); if(!lesson)return "";
+ let c=lesson.curriculum||{}, review=buildReviewQueue().slice(0,12), last=latestSessionForLesson(lessonId);
+ let main=(c.mainVocabulary||[]).filter(x=>!x.excludeFromPractice).map(x=>x.term);
+ let ext=(c.extendedVocabulary||[]).filter(x=>!x.excludeFromPractice).map(x=>x.term);
+ let grammar=(c.grammar||[]).map(x=>x.rule||x.title||x.name||"").filter(Boolean);
+ return `SPEAKING BRIEF
+
+CURRENT LESSON
+- Lesson: ${lesson.title}
+- Main Vocabulary: ${main.join(", ")||"None"}
+- Extended Vocabulary: ${ext.join(", ")||"None"}
+- Grammar / Know-how: ${grammar.join(" | ")||"None"}
+
+RECENT LEARNING
+- Latest session: ${last?last.id:"None"}
+- Active study time: ${last?secondsText(last.activeSeconds||0):"n/a"}
+
+OLD ITEMS THAT MAY NATURALLY RETURN
+${review.length?review.map(x=>`- ${x.target} (${x.reasons.map(reviewReasonLabel).join(", ")})`).join("\n"):"- None yet"}
+
+SPEAKING INSTRUCTIONS
+1. Use the current lesson as the main topic.
+2. Mix older items only when they fit naturally; do not turn the conversation into a random vocabulary quiz.
+3. Start at a comfortable level, then ask follow-up questions that require slightly longer answers.
+4. Correct important errors after Hanne finishes a thought. Prioritize meaning, target vocabulary usage, grammar, and naturalness.
+5. Do not treat question_not_displayed as a learner weakness.
+6. At the end, return ONLY valid JSON in this format:
+
+{
+  "type": "SPEAKING_REPORT",
+  "lessonId": "${lesson.id}",
+  "lessonTitle": "${lesson.title}",
+  "speakingMinutes": 0,
+  "targetsUsedWell": [],
+  "targetsToReview": [],
+  "grammarToReview": [],
+  "pronunciationNotes": [],
+  "betterExpressions": [
+    {"original":"","better":"","reason":""}
+  ],
+  "overallNotes": [],
+  "completed": true
+}`;
+}
+function saveSpeakingReport(r){
+ let arr=JSON.parse(localStorage.getItem("english_os_speaking_reports")||"[]");
+ arr.push({...r,importedAt:new Date().toISOString()});
+ localStorage.setItem("english_os_speaking_reports",JSON.stringify(arr));
+ let signals=JSON.parse(localStorage.getItem("english_os_learning_signals")||"[]");
+ (r.targetsToReview||[]).forEach(t=>signals.push({target:t,reason:"speaking_review",component:"Vocabulary",lessonId:r.lessonId,at:new Date().toISOString()}));
+ (r.grammarToReview||[]).forEach(t=>signals.push({target:t,reason:"speaking_review",component:"Grammar / Know-how",lessonId:r.lessonId,at:new Date().toISOString()}));
+ localStorage.setItem("english_os_learning_signals",JSON.stringify(signals));
+}
+function buildReviewQueue(){
+ let signals=JSON.parse(localStorage.getItem("english_os_learning_signals")||"[]"),q=new Map();
+ function add(target,reason,component,lessonId){
+  if(!target||reason==="question_not_displayed"||reason==="no_time"||/no_time/.test(reason||""))return;
+  let key=(target+"|"+(component||"")).toLowerCase(),o=q.get(key)||{target,component:component||"Vocabulary",lessonId:lessonId||"",reasons:[],count:0};
+  o.count++;if(reason&&!o.reasons.includes(reason))o.reasons.push(reason);q.set(key,o);
+ }
+ signals.forEach(x=>add(x.target,x.reason,x.component,x.lessonId));
+ let sessions=JSON.parse(localStorage.getItem("english_os_sessions")||"[]");
+ sessions.forEach(ss=>(ss.answers||[]).forEach(a=>{
+   if(a.autoCorrect===false)add(a.target,"incorrect",a.component,ss.lessonId);
+   if(a.kind==="vocab_topic_spelling")Object.entries(a.rows||{}).forEach(([term,row])=>{if(row.autoSpellingCorrect===false)add(term,"spelling_incorrect","Vocabulary",ss.lessonId)});
+ }));
+ return [...q.values()].sort((a,b)=>b.count-a.count);
+}
+function reviewReasonLabel(r){
+ return ({meaning_forgot:"忘記意思",meaning_unknown:"不認得",spelling_forgot:"忘記拼字",recall_failed:"完全忘記",incorrect:"答錯",spelling_incorrect:"拼字錯",production_dont_know:"不知道怎麼造句",speaking_review:"Speaking 需要複習",corrected_needs_review:"已訂正・之後再驗收"}[r]||r);
+}
+function renderReview(){
+ let q=buildReviewQueue(),box=$("reviewList"),stats=$("reviewStats");if(!box||!stats)return;
+ let v=q.filter(x=>x.component==="Vocabulary").length,c=q.filter(x=>x.component==="Lesson Concept").length,g=q.filter(x=>x.component==="Grammar / Know-how").length;
+ stats.innerHTML=`<div><b>${q.length}</b><span>Review items</span></div><div><b>${v}</b><span>Vocabulary</span></div><div><b>${c}</b><span>Concept</span></div><div><b>${g}</b><span>Grammar</span></div>`;
+ box.innerHTML=q.length?`<div class="vocab-topic-list">${q.map(x=>`<div class="vocab-row"><div class="vocab-prompt">${esc(x.target)}</div><div>${x.reasons.map(r=>`<span class="analytics-badge">${esc(reviewReasonLabel(r))}</span>`).join(" ")}</div><div class="tiny">出現 ${x.count} 次</div></div>`).join("")}</div>`:'<div class="empty">目前沒有需要 Review 的弱項。</div>';
+}
+function renderTimer(){
+ if(!learnSession)return;
+ $("activeTimer").textContent=secondsText(learnSession.activeSeconds);
+ let comp=studyStageKey(learnItems[learnIndex]);
+ $("componentTimer").textContent=`目前環節：${comp} ${secondsText(learnSession.componentSeconds[comp]||0)}`;
+ renderStudyAnalytics();
+}
+$("pauseLearning").onclick=()=>{
+ learnPaused=!learnPaused;$("pauseLearning").textContent=learnPaused?"Resume":"Pause";
+};
+function componentItems(name){return learnItems.map((x,i)=>({x,i})).filter(o=>o.x.component===name)}
+function isItemCompleted(x){
+ if(x.kind==="vocab_group")return false;
+ return learnSession.answers.some(a=>a.id===x.id)||(learnSession.skips||[]).some(k=>k.itemId===x.id);
+}
+function renderSessionNav(){
+ let comps=["Lesson Concept","Vocabulary","Grammar / Know-how"],html="";
+ comps.forEach(c=>{
+   let arr=componentItems(c),done=arr.filter(o=>isItemCompleted(o.x)).length;
+   html+=`<button class="session-nav-btn ${learnItems[learnIndex]?.component===c?"active":""}" onclick="jumpComponent('${c.replace(/'/g,"\\'")}')"><span class="nav-title">${esc(c)}</span><span class="nav-count">${done} / ${arr.length} 已完成</span></button>`;
+ });
+ $("learnSide").innerHTML=html;
+}
+window.jumpComponent=name=>{
+ let arr=componentItems(name);if(!arr.length)return;
+ let firstUndone=arr.find(o=>!isItemCompleted(o.x));
+ learnIndex=(firstUndone||arr[0]).i;renderLearning();
+};
+function isVocabItem(x){return x&&x.component==="Vocabulary"}
+let englishVoices=[];
+function loadEnglishVoices(){
+ if(!("speechSynthesis" in window))return;
+ let all=speechSynthesis.getVoices();
+ englishVoices=all.filter(v=>/google/i.test(v.name)&&(/^en[-_]/i.test(v.lang)||/^en$/i.test(v.lang))).slice(0,3);
+}
+if("speechSynthesis" in window){loadEnglishVoices();speechSynthesis.onvoiceschanged=loadEnglishVoices;}
+function selectedVoice(){
+ let saved=localStorage.getItem("english_os_voice");
+ return englishVoices.find(v=>v.name===saved)||englishVoices[0];
+}
+function voiceSelectorHTML(){
+ loadEnglishVoices();
+ if(!englishVoices.length)return `<span class="tiny">目前沒有偵測到 Google English voice</span>`;
+ let saved=localStorage.getItem("english_os_voice")||englishVoices[0].name;
+ return `<label style="font-size:13px;opacity:.78">Voice <select id="voiceSelect" class="voice-select" onchange="localStorage.setItem('english_os_voice',this.value)">${englishVoices.map(v=>`<option value="${esc(v.name)}" ${saved===v.name?"selected":""}>${esc(v.name)} · ${esc(v.lang)}</option>`).join("")}</select></label>`;
+}
+function speakWord(word){
+ if(!("speechSynthesis" in window)){msg("這個瀏覽器目前不支援語音播放。",true);return}
+ loadEnglishVoices();
+ if(!englishVoices.length){msg("目前沒有偵測到 Google English voice。",true);return}
+ speechSynthesis.cancel();
+ let u=new SpeechSynthesisUtterance(word);
+ u.lang=selectedVoice()?.lang||"en-US";u.rate=1;u.pitch=1;
+ let v=selectedVoice();if(v)u.voice=v;
+ speechSynthesis.speak(u);
+}
+function struggleOptions(x){
+ if(!isVocabItem(x))return [
+  ["no_time","🕐 暫時沒時間"],
+  ["too_easy","😌 太簡單／已經會了"],
+  ["cant_answer","🤔 想不出怎麼回答"],
+  ["not_now","⏭️ 這次不想做"]
+ ];
+ if(x.vocabRound==="meaning")return [
+  ["meaning_familiar_forgot","看過這個字，但想不起意思"],
+  ["meaning_unknown","完全不認得這個字"],
+  ["no_time","暫時沒時間"],
+  ["too_easy","太簡單／我已經會了"]
+ ];
+ if(x.vocabRound==="spelling")return [
+  ["spelling_forgot","知道是哪個字，但忘記怎麼拼"],
+  ["recall_failed","完全忘記"]
+ ];
+ if(x.vocabRound==="production")return [
+  ["production_no_time","暫時沒時間"],
+  ["production_dont_know","不知道怎麼造句"]
+ ];
+ return [["cant_answer","想不出來"],["no_time","暫時沒時間"]];
+}
+function saveLearningSignal(x,reason){
+ let signal={lessonId:learnSession.lessonId,itemId:x.id,component:x.component,target:x.target,round:x.vocabRound||null,reason,at:new Date().toISOString()};
+ learnSession.skips=learnSession.skips||[];learnSession.skips.push(signal);
+ let all=JSON.parse(localStorage.getItem("english_os_learning_signals")||"[]");all.push(signal);localStorage.setItem("english_os_learning_signals",JSON.stringify(all));
+}
+function showStruggleReasons(){
+ let x=learnItems[learnIndex],opts=struggleOptions(x);
+ $("learnFeedback").innerHTML=`<div class="struggle-box"><b>這題卡在哪裡？</b><div class="struggle-options">${opts.map(o=>`<button class="secondary" onclick="confirmStruggle('${o[0]}')">${esc(o[1])}</button>`).join("")}</div></div>`;
+}
+window.confirmStruggle=reason=>{let x=learnItems[learnIndex];saveLearningSignal(x,reason);learnIndex++;renderLearning()};
+function learningProgressPct(){
+ if(!learnItems.length)return 0;
+ let done=learnItems.filter(isItemCompleted).length;
+ return Math.round(done/learnItems.length*100);
+}
+function vocabPairState(x){
+ let a=learnSession.answers.find(v=>v.id===x.id);
+ return a||{id:x.id,component:x.component,kind:x.kind,target:x.target,question:x.question,meaningAnswer:"",spellingAnswer:"",needsGPT:true,meaningReference:x.meaning||"",spellingReference:x.target,completedParts:{meaning:false,spelling:false}};
+}
+function vocabTopicState(x){
+ let old=learnSession.answers.find(a=>a.id===x.id);
+ return old||{id:x.id,component:"Vocabulary",kind:x.kind,target:x.target,question:x.question,rows:{},needsGPT:true};
+}
+function renderVocabTopic(x){
+ let st=vocabTopicState(x),isMeaning=x.kind==="vocab_topic_meaning";
+ $("learnQuestion").textContent=x.question;
+ $("learnHelp").textContent=x.help||"";
+ let missingMeaning=!isMeaning&&x.vocab.some(v=>!String(v.meaning||"").trim());
+ $("learnAnswerArea").innerHTML=`
+   ${missingMeaning?`<div class="explain-box" style="margin-bottom:14px"><b>⚠️ 這份教材有單字尚未設定中文意思</b><div>中翻英需要 Vocabulary 的 <code>meaning</code> 才能出題。請回 Curriculum Map 補上中文意思，或重新匯入包含 meaning 的 Curriculum JSON。</div></div>`:""}
+   <div class="topic-toolbar">
+     <div><b>${isMeaning?"英翻中":"中翻英 / 拼字"}</b></div>
+     ${voiceSelectorHTML()}
+   </div>
+   <div class="vocab-topic-list">
+   ${x.vocab.map(v=>{
+      let row=st.rows[v.term]||{};
+      let prompt=isMeaning?v.term:(v.meaning||"⚠️ 尚未設定中文意思");
+      let val=isMeaning?(row.meaningAnswer||""):(row.spellingAnswer||"");
+      let forgot=isMeaning?row.meaningForgot:row.spellingForgot;
+      let missing=isMeaning?row.meaningPromptMissing:row.spellingPromptMissing;
+      return `<div class="vocab-row">
+        <div class="vocab-prompt">${esc(prompt)} <button class="speak-btn" type="button" onclick="speakWord('${String(v.term).replace(/\\/g,"\\\\").replace(/'/g,"\\'")}')">🔊</button></div>
+        <div><input class="learn-input topic-input" data-term="${esc(v.term)}" value="${esc(val)}" placeholder="${isMeaning?"輸入中文意思…":"輸入英文單字／片語…"}"></div>
+        <div class="vocab-actions">
+          <button class="vocab-forgot ${forgot?"active":""}" type="button" onclick="toggleTopicForgot('${String(v.term).replace(/\\/g,"\\\\").replace(/'/g,"\\'")}')">${forgot?"✓ 已標記忘記":"我忘記了"}</button>
+          <button class="vocab-missing ${missing?"active":""}" type="button" onclick="toggleTopicMissing('${String(v.term).replace(/\\/g,"\\\\").replace(/'/g,"\\'")}')">${missing?"✓ 已標記未顯示":"題目未顯示"}</button>
+        </div>
+      </div>`;
+   }).join("")}
+   </div>`;
+ $("submitLearn").textContent="完成這一頁 →";
+ $("submitLearn").onclick=handleVocabTopicSubmit;
+ if($("skipLearn"))$("skipLearn").style.display="none";
+}
+function persistVisibleTopicInputs(x,st){
+ let isMeaning=x.kind==="vocab_topic_meaning";
+ document.querySelectorAll(".topic-input").forEach(el=>{
+   let t=el.dataset.term;st.rows[t]=st.rows[t]||{};
+   if(isMeaning)st.rows[t].meaningAnswer=el.value;
+   else st.rows[t].spellingAnswer=el.value;
+ });
+}
+window.toggleTopicForgot=term=>{
+ let x=learnItems[learnIndex],st=vocabTopicState(x),isMeaning=x.kind==="vocab_topic_meaning";
+ persistVisibleTopicInputs(x,st);
+ st.rows[term]=st.rows[term]||{};
+ let key=isMeaning?"meaningForgot":"spellingForgot";
+ st.rows[term][key]=!st.rows[term][key];
+ let idx=learnSession.answers.findIndex(a=>a.id===x.id);
+ if(idx>=0)learnSession.answers[idx]=st;else learnSession.answers.push(st);
+ renderVocabTopic(x);renderSessionNav();
+};
+window.toggleTopicMissing=term=>{
+ let x=learnItems[learnIndex],st=vocabTopicState(x),isMeaning=x.kind==="vocab_topic_meaning";
+ persistVisibleTopicInputs(x,st);
+ st.rows[term]=st.rows[term]||{};
+ let key=isMeaning?"meaningPromptMissing":"spellingPromptMissing";
+ st.rows[term][key]=!st.rows[term][key];
+ let idx=learnSession.answers.findIndex(a=>a.id===x.id);
+ if(idx>=0)learnSession.answers[idx]=st;else learnSession.answers.push(st);
+ renderVocabTopic(x);renderSessionNav();
+};
+function handleVocabTopicSubmit(){
+ let x=learnItems[learnIndex],st=vocabTopicState(x),isMeaning=x.kind==="vocab_topic_meaning";
+ document.querySelectorAll(".topic-input").forEach(el=>{
+   let term=el.dataset.term;st.rows[term]=st.rows[term]||{};
+   if(isMeaning)st.rows[term].meaningAnswer=el.value.trim();
+   else st.rows[term].spellingAnswer=el.value.trim();
+ });
+ x.vocab.forEach(v=>{
+   let row=st.rows[v.term]||{};
+   if(isMeaning){
+     if(row.meaningForgot)saveLearningSignal({...x,target:v.term,vocabRound:"meaning"},"meaning_forgot");
+     if(row.meaningPromptMissing)saveLearningSignal({...x,target:v.term,vocabRound:"meaning"},"question_not_displayed");
+   }else{
+     if(row.spellingForgot)saveLearningSignal({...x,target:v.term,vocabRound:"spelling"},"spelling_forgot");
+     if(row.spellingPromptMissing)saveLearningSignal({...x,target:v.term,vocabRound:"spelling"},"question_not_displayed");
+     if(row.spellingAnswer)row.autoSpellingCorrect=String(row.spellingAnswer).toLowerCase().trim()===String(v.term).toLowerCase().trim();
+   }
+ });
+ let idx=learnSession.answers.findIndex(a=>a.id===x.id);
+ if(idx>=0)learnSession.answers[idx]=st;else learnSession.answers.push(st);
+ $("learnFeedback").innerHTML='<div class="explain-box"><b>✓ 這一頁已記錄</b><div>留白也可以；「我忘記了」與「題目未顯示」都會留下不同的 Learning Signal，回貼給 GPT 時可分辨是不會，還是題目資料本身沒有顯示。</div></div>';
+ renderSessionNav();
+ $("submitLearn").textContent="下一頁 →";
+ $("submitLearn").onclick=()=>{learnIndex++;renderLearning()};
+}
+function renderLearning(){
+ if(learnIndex>=learnItems.length){finishLearning();return}
+ let x=learnItems[learnIndex],pct=learningProgressPct();
+ $("learnProgress").style.width=pct+"%";
+ $("learnTag").textContent=`${x.component} · ${pct}%`;
+ $("learnQuestion").textContent=x.question||x.target;
+ $("learnHelp").textContent=x.help||"";
+ $("learnFeedback").innerHTML="";
+ if($("skipLearn"))$("skipLearn").style.display="";
+ renderSessionNav();
+
+ let row=$("submitLearn").parentElement,prev=$("prevLearn");
+ if(!prev){
+   prev=document.createElement("button");prev.id="prevLearn";prev.className="btn ghost";prev.textContent="← 上一步";
+   row.insertBefore(prev,$("submitLearn"));prev.onclick=()=>{if(learnIndex>0){learnIndex--;renderLearning()}};
+ }
+ prev.disabled=learnIndex===0;
+
+ if(x.kind==="vocab_topic_meaning"||x.kind==="vocab_topic_spelling"){
+   renderVocabTopic(x);renderTimer();renderLiveState();return;
+ }
+
+ if(x.kind==="choice")$("learnAnswerArea").innerHTML=`<div class="choice-grid">${x.choices.map((c,i)=>`<button class="choice-btn" data-choice="${esc(c)}" onclick="selectLearnChoice(this)">${String.fromCharCode(65+i)}. ${esc(c)}</button>`).join("")}</div><input id="learnInput" type="hidden">`;
+ else if(x.kind==="exact"||x.kind==="reorder")$("learnAnswerArea").innerHTML='<input id="learnInput" class="learn-input" placeholder="Type your answer…">';
+ else if(isVocabItem(x)&&x.vocabRound==="production"){
+   $("learnAnswerArea").innerHTML=`<label style="display:block;font-weight:800;margin-bottom:7px">你想表達的中文意思（方便 GPT 對照糾正）</label><textarea id="learnIntent" class="learn-input" style="min-height:76px" placeholder="例如：我跟妹妹感情很好。"></textarea><label style="display:block;font-weight:800;margin:14px 0 7px">你的英文造句</label><textarea id="learnInput" class="learn-input" style="min-height:120px" placeholder="Write your English sentence…"></textarea>`;
+ } else $("learnAnswerArea").innerHTML='<textarea id="learnInput" class="learn-input" style="min-height:130px"></textarea>';
+
+ let old=learnSession.answers.find(a=>a.id===x.id);
+ if(old&&$("learnInput")){
+   $("learnInput").value=old.userAnswer||"";
+   if($("learnIntent"))$("learnIntent").value=old.intendedChinese||"";
+ }
+ $("submitLearn").textContent="Submit";
+ $("submitLearn").onclick=handleLearnSubmit;
+ renderTimer();renderLiveState();
+}
+window.selectLearnChoice=btn=>{document.querySelectorAll(".choice-btn").forEach(b=>b.classList.remove("selected"));btn.classList.add("selected");$("learnInput").value=btn.dataset.choice};
+function putAnswer(r){let i=learnSession.answers.findIndex(a=>a.id===r.id);if(i>=0)learnSession.answers[i]=r;else learnSession.answers.push(r)}
+function handleLearnSubmit(){
+ let x=learnItems[learnIndex],val=$("learnInput")?.value.trim()||"";
+ if(!val){msg("請先作答，或按 Skip。",true);return}
+ let norm=v=>String(v).toLowerCase().trim().replace(/[.!?]+$/,"").replace(/\s+/g," ");
+ let r={id:x.id,component:x.component,kind:x.kind,target:x.target,question:x.question,userAnswer:val,needsGPT:x.needsGPT,referenceAnswer:x.referenceAnswer||"",intendedChinese:$("learnIntent")?.value.trim()||""};
+ if(["exact","reorder","choice"].includes(x.kind)){r.autoCorrect=norm(val)===norm(x.answer);r.correctAnswer=x.answer}
+ putAnswer(r);if(r.autoCorrect!==undefined)updateAutoLearningState(r);
+ $("learnFeedback").innerHTML=r.autoCorrect!==undefined?`<div class="explain-box"><b>${r.autoCorrect?"✓ Correct":"✕ Not quite"}</b>${r.autoCorrect?"":`<div><b>正確答案：</b>${esc(x.answer)}</div>`}${x.explanation?`<div><b>為什麼：</b>${esc(x.explanation)}</div>`:""}</div>`:"<div class='explain-box'>✓ 已記錄；Session 結束後一次交 GPT。</div>";
+ renderSessionNav();
+ $("submitLearn").textContent="下一題 →";$("submitLearn").onclick=()=>{learnIndex++;renderLearning()};
+}
+$("skipLearn").onclick=showStruggleReasons;
+
+$("endLearning").onclick=()=>finishLearning();
+
+function finishLearning(){
+ if(!learnSession)return;
+ clearInterval(learnTick);learnTick=null;
+ learnSession.endedAt=new Date().toISOString();
+ learnSession.stageUnitCounts={};
+ ["Lesson Concept","Vocabulary · 英翻中","Vocabulary · 中翻英 / 拼字","Vocabulary · 造句","Grammar / Know-how"].forEach(stage=>{
+   learnSession.stageUnitCounts[stage]=completedStageUnits(stage)||stageQuestionCount(stage);
+ });learnSession.status=learnIndex>=learnItems.length?"completed":"ended_early";
+ let history=JSON.parse(localStorage.getItem("english_os_sessions")||"[]");history.push(learnSession);localStorage.setItem("english_os_sessions",JSON.stringify(history));
+ let autoState=JSON.parse(localStorage.getItem("english_os_auto_practice_state")||"{}");
+ learnSession.answers.filter(a=>a.autoCorrect!==undefined).forEach(a=>{
+   let k=learnSession.lessonId+"::"+a.id;
+   let old=autoState[k]||{attempts:0,correct:0};
+   autoState[k]={...old,lessonId:learnSession.lessonId,target:a.target,component:a.component,kind:a.kind,attempts:old.attempts+1,correct:old.correct+(a.autoCorrect?1:0),lastCorrect:a.autoCorrect,lastSeen:new Date().toISOString()};
+ });
+ localStorage.setItem("english_os_auto_practice_state",JSON.stringify(autoState));
+ $("learnProgress").style.width="100%";$("learningArea").style.display="none";$("endLearning").disabled=true;
+ $("sessionComplete").style.display="block";
+ buildGPTCheckBrief();
+}
+function buildGPTCheckBrief(){
+ let semantic=learnSession.answers.filter(a=>a.needsGPT&&!a.skipped);
+ let auto=learnSession.answers.filter(a=>["exact","choice","reorder"].includes(a.kind));
+ $("gptCheckBrief").value=`GPT CHECK BRIEF
+
+SESSION
+- Session ID: ${learnSession.id}
+- Lesson: ${learnSession.lessonTitle}
+- Active study time: ${secondsText(learnSession.activeSeconds)}
+- Time by study stage:
+${stageTimeSummary().split("\n").map(v=>`  - ${v}`).join("\n")}
+- Pace by study stage:
+${["Lesson Concept","Vocabulary · 英翻中","Vocabulary · 中翻英 / 拼字","Vocabulary · 造句","Grammar / Know-how"].map(stage=>{let sec=learnSession.componentSeconds?.[stage]||0,units=learnSession.stageUnitCounts?.[stage]||0;return `  - ${stage}: ${units&&sec?Math.round(sec/units)+" sec/item":"n/a"}`}).join("\n")}
+- Status: ${learnSession.status}
+
+TASK
+Please grade the learner's answers. Preserve the learner's original wording.
+For Chinese meaning answers, judge semantic correctness rather than exact wording.
+For vocabulary sentences, check target-word usage, grammar, and naturalness.
+For open Lesson Concept answers, check whether the explanation reflects the curriculum concept.
+For Grammar / Know-how application answers, check rule understanding and the learner-created example.
+Closed Concept / Grammar questions, spelling, and reorder items were already graded by the website; do not re-grade them.
+Do not penalize stylistic differences that are still correct.
+
+ANSWERS NEEDING GPT CHECK
+${semantic.map((a,i)=>`
+[${i+1}]
+Component: ${a.component}
+Type: ${a.kind}
+Target: ${a.target}
+Question: ${a.question}
+Hanne's answer: ${a.userAnswer}`).join("\n")||"None"}
+
+AUTO-CHECKED ITEMS
+${learnSession.answers.filter(a=>["exact","choice","reorder"].includes(a.kind)).map(a=>`- [${a.id}] ${a.component} / ${a.target}: "${a.userAnswer}" → ${a.autoCorrect?"Correct":"Incorrect; expected "+a.correctAnswer}`).join("\n")||"None"}
+
+Return ONLY valid JSON:
+{
+  "sessionId": "${learnSession.id}",
+  "lessonTitle": "${learnSession.lessonTitle}",
+  "gradedAnswers": [
+    {
+      "id": "",
+      "target": "word / grammar / concept target",
+      "component": "Vocabulary | Lesson Concept | Grammar / Know-how",
+      "status": "correct|developing|incorrect",
+      "original": "preserve Hanne's exact answer",
+      "better": "correct or more natural answer",
+      "reason": "brief Traditional Chinese explanation",
+      "learningSignal": "strong|review|weak"
+    }
+  ],
+  "vocabularyWeaknesses": [],
+  "grammarWeaknesses": [],
+  "conceptWeaknesses": [],
+  "overallNotes": [],
+  "completed": true
+}`;
+}
+$("copyCheckBrief").onclick=async()=>{await navigator.clipboard.writeText($("gptCheckBrief").value);msg("✓ GPT Check Brief 已複製。")};
+
+$("importCheckReport").onclick=()=>{
+ try{
+   let raw=$("gptCheckReport").value.trim().replace(/^```json\s*/i,"").replace(/```$/,"").trim(),r=JSON.parse(raw);
+   if(r.sessionId!==learnSession.id)throw new Error("Session ID 不一致");
+   let reports=JSON.parse(localStorage.getItem("english_os_gpt_reports")||"[]");reports.push({...r,importedAt:new Date().toISOString()});localStorage.setItem("english_os_gpt_reports",JSON.stringify(reports));
+   applyGPTReportToLearningState(r);
+   // update lightweight weakness state
+   let key="english_os_weaknesses",w=JSON.parse(localStorage.getItem(key)||'{"vocabulary":[],"grammar":[],"concept":[]}');
+   w.vocabulary=[...new Set([...(w.vocabulary||[]),...(r.vocabularyWeaknesses||[])])];
+   w.grammar=[...new Set([...(w.grammar||[]),...(r.grammarWeaknesses||[])])];
+   w.concept=[...new Set([...(w.concept||[]),...(r.conceptWeaknesses||[])])];
+   localStorage.setItem(key,JSON.stringify(w));
+   $("importResult").classList.add("show");$("importResult").innerHTML="<b>✓ GPT Check Report 已匯入。</b><div class=tiny style='margin-top:6px'>下一步：到 Correction 查看錯題、理解原因並自己重新回答，再進 Speaking。</div>";
+   renderCorrections();
+   msg("✓ Session Report 已保存。下一步：Correction 訂正。");
+ }catch(e){msg("Report 無法匯入："+e.message,true)}
+};
+
+$("buildSpeakingBrief").onclick=()=>{$("speakingBrief").value=buildSpeakingBriefText()};
+$("copySpeakingBrief").onclick=async()=>{let v=$("speakingBrief").value||buildSpeakingBriefText();$("speakingBrief").value=v;if(!v){msg("請先選擇教材。",true);return}await navigator.clipboard.writeText(v);msg("✓ Speaking Brief 已複製。到 Hanne's English OS Project 開始語音對話即可。")};
+$("importSpeakingReport").onclick=()=>{try{let raw=$("speakingReport").value.trim().replace(/^```json\s*/i,"").replace(/```$/,"").trim(),r=JSON.parse(raw);if(r.type!=="SPEAKING_REPORT")throw new Error("不是 SPEAKING_REPORT");saveSpeakingReport(r);$("speakingImportResult").classList.add("show");$("speakingImportResult").innerHTML="<b>✓ Speaking Report 已匯入。</b><div class=tiny>Speaking 弱項已加入 Learning State / Review Queue。</div>";renderReview();msg("✓ Speaking Report 已保存並同步。")}catch(e){msg("Speaking Report 無法匯入："+e.message,true)}};
+
+(async function boot(){
+ await syncInit();
+ render();renderLessons();populateLearnLessons();populateSpeakingLessons();
+ setInterval(syncPoll,2000);
+})();
+</script></body></html>

@@ -1,4 +1,1 @@
-{
-  "cleanUrls": true,
-  "trailingSlash": false
-}
+{"cleanUrls":true,"trailingSlash":false,"framework":null,"buildCommand":"node scripts/build.mjs","outputDirectory":"public","installCommand":""}

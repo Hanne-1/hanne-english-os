@@ -1,0 +1,4 @@
+supabase/
+tests/
+*.md
+test-results.txt

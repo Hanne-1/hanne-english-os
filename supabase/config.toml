@@ -1,0 +1,3 @@
+[functions.speaking-queue]
+# index.ts validates the project API key; a publishable key is not a JWT.
+verify_jwt = false

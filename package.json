@@ -1,0 +1,10 @@
+{
+  "name": "hanne-english-os",
+  "version": "2.24.0",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/speaking-queue.test.mjs && node tests/ui.cjs"
+  },
+  "engines": { "node": ">=22" }
+}

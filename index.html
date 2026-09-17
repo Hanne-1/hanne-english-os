@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Hanne's English OS V2.24.0</title>
+<title>Hanne's English OS V2.25.0</title>
 <style>
 :root{--bg:#f7f5f1;--card:#fffefc;--ink:#39373d;--muted:#85818a;--lav:#8f86a5;--lav2:#eeeaf2;--blue:#edf3f6;--rose:#b18383;--line:#e5e0dc;--green:#657b69;--greenbg:#edf3ee}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",sans-serif}
@@ -167,7 +167,7 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
 
 </style>
 </head><body><div class="app">
-<div class="top"><div><h1>Hanne's English OS</h1><div class="sub">V2.24.0 · Coverage Queue</div></div><div id="syncStatus" class="pill">Sync connecting…</div></div>
+<div class="top"><div><h1>Hanne's English OS</h1><div class="sub">V2.25.0 · Natural Speaking Coverage</div></div><div id="syncStatus" class="pill">Sync connecting…</div></div>
 <div class="nav"><button data-page="dashboard" class="active">Dashboard</button><button data-page="materials">Materials</button><button data-page="add">＋ Add Material</button><button data-page="learn">Learning Session</button><button data-page="correction">Correction</button><button data-page="review">Review</button><button data-page="speaking">Speaking</button></div>
 
 <div class="mobile-nav"><label for="mobilePage">前往頁面</label><select id="mobilePage" aria-label="主要導覽"><option value="dashboard">首頁 · Dashboard</option><option value="materials">教材 · Materials</option><option value="add">新增教材 · Add Material</option><option value="learn">學習 · Learning</option><option value="correction">訂正 · Correction</option><option value="review">複習 · Review</option><option value="speaking">口說 · Speaking</option></select></div>
@@ -333,7 +333,7 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
 </div>
 <div id="appToast" class="toast" role="status" aria-live="polite"></div>
 <script>// BEGIN GENERATED speaking-queue.js
-/* Shared, deterministic V2.24 coverage rules. No DOM, storage, network, or model calls. */
+/* Shared, deterministic V2.25 coverage rules. No DOM, storage, network, or model calls. */
 (function (root) {
   'use strict';
   const PHASES = ['warmup', 'lesson_application', 'knowledge_integration', 'final_challenge'];
@@ -347,39 +347,54 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
     for (let i = 0; i < s.length; i++) { a = Math.imul(a ^ s.charCodeAt(i), 16777619); b = Math.imul(b, 33) ^ s.charCodeAt(i); }
     return (a >>> 0).toString(16).padStart(8, '0') + (b >>> 0).toString(16).padStart(8, '0');
   }
-  function isQueueReport(raw) { const m = /^(\d+)\.(\d+)(?:\.(\d+))?$/.exec(text(raw?.schemaVersion)); return !!m && (+m[1] > 2 || (+m[1] === 2 && +m[2] >= 24)); }
-  function inventory(lesson, corrections = []) {
+  function parsedVersion(raw) { const m = /^(\d+)\.(\d+)(?:\.(\d+))?$/.exec(text(raw)); return m ? [+m[1], +m[2], +(m[3] || 0)] : null; }
+  function atLeast(raw, major, minor) { const v = parsedVersion(raw); return !!v && (v[0] > major || (v[0] === major && v[1] >= minor)); }
+  function isQueueReport(raw) { return atLeast(raw?.schemaVersion, 2, 24); }
+  function isSimplifiedReport(raw) { return atLeast(raw?.schemaVersion, 2, 25); }
+  function inventory(lesson, corrections = [], options = {}) {
+    const schemaVersion = typeof options === 'string' ? options : options.schemaVersion || '2.25.0';
+    const legacy = !atLeast(schemaVersion, 2, 25);
     const c = lesson.curriculum || {}, items = new Map();
     function add(kind, key, target, label, taskMode, source, extra = {}) {
       if (!text(key).trim()) return;
       const coverageId = JSON.stringify([lesson.id, kind, key]);
       items.set(coverageId, { coverageId, sourceVersion: version({ policy: '2.24.0', taskMode, source }), lessonId: lesson.id, kind, target, label, taskMode, ...extra });
     }
-    [...(c.mainVocabulary || []), ...(c.extendedVocabulary || [])].filter(x => !x.excludeFromPractice).forEach(x => add('vocabulary', x.term, x.term, x.term + ' · vocabulary', 'vocabulary_production', { term: x.term, meaning: x.meaning || '', partOfSpeech: x.partOfSpeech || x.pos || '' }));
+    [...(c.mainVocabulary || []), ...(c.extendedVocabulary || [])].filter(x => !x.excludeFromPractice).forEach(x => add('vocabulary', x.term, x.term, x.term, 'vocabulary_production', { term: x.term, meaning: x.meaning || '', partOfSpeech: x.partOfSpeech || x.pos || '' }));
     (c.grammar || []).filter(x => !x.excludeFromPractice).forEach(x => {
       const rule = typeof x === 'string' ? x : x.rule || x.title || x.name || '';
       const capitalization = /capital|大寫|小寫/i.test(rule);
       const grammarTask = !capitalization ? 'rule_application' : /誰的|所有格|possessive/i.test(rule) ? 'possessive_title' : /代替|replac|instead of/i.test(rule) ? 'title_replacing_name' : /名字|姓名|name/i.test(rule) ? 'title_with_name' : 'capitalization_decision';
-      add('grammar', rule, rule, rule, 'grammar_application', x, { evidenceType: capitalization ? 'capitalization_decision' : 'rule_application', grammarTask, grammarSource: x });
+      const expectedAnswer = grammarTask === 'possessive_title' ? 'lowercase' : capitalization ? 'capital' : null;
+      add('grammar', rule, rule, rule, 'grammar_application', x, { evidenceType: capitalization ? 'capitalization_decision' : 'rule_application', grammarTask, expectedAnswer, grammarSource: x });
     });
-    corrections.filter(x => x.lessonId === lesson.id).forEach(x => add('correction', x.correctionId, x.target, x.target + ' · ' + (x.round || x.component) + ' 訂正', x.round === 'spelling' ? 'spelling_recall' : 'correction_transfer', { prompt: x.prompt, answerStatus: x.answerStatus, originalAnswer: x.originalAnswer, gptSuggestedAnswer: x.gptSuggestedAnswer, learnerCorrection: x.learnerCorrection, round: x.round, component: x.component }, { correctionId: x.correctionId, component: x.component, sourcePrompt: x.prompt }));
+    if (legacy) corrections.filter(x => x.lessonId === lesson.id).forEach(x => add('correction', x.correctionId, x.target, x.target + ' · ' + (x.round || x.component) + ' 訂正', x.round === 'spelling' ? 'spelling_recall' : 'correction_transfer', { prompt: x.prompt, answerStatus: x.answerStatus, originalAnswer: x.originalAnswer, gptSuggestedAnswer: x.gptSuggestedAnswer, learnerCorrection: x.learnerCorrection, round: x.round, component: x.component }, { correctionId: x.correctionId, component: x.component, sourcePrompt: x.prompt }));
     return [...items.values()];
   }
+  const practiced = item => ['PRACTICED', 'PRACTICED_RELIABLY'].includes(item?.state);
   function summarize(s) {
-    s.completedCoverage = s.queue.filter(x => x.state === 'PRACTICED_RELIABLY');
-    s.remainingCoverage = s.queue.filter(x => x.state !== 'PRACTICED_RELIABLY');
-    s.sessionCoverage = { total: s.queue.length, practiced: s.completedCoverage.length, remaining: s.remainingCoverage.length, remainingIds: s.remainingCoverage.map(x => x.coverageId) };
+    s.completedCoverage = s.queue.filter(practiced);
+    s.remainingCoverage = s.queue.filter(x => !practiced(x));
+    const byKind = {};
+    for (const kind of ['vocabulary', 'grammar']) {
+      const rows = s.queue.filter(x => x.kind === kind), done = rows.filter(practiced).length;
+      byKind[kind] = { total: rows.length, practiced: done, remaining: rows.length - done };
+    }
+    s.sessionCoverage = { total: s.queue.length, practiced: s.completedCoverage.length, remaining: s.remainingCoverage.length, remainingIds: s.remainingCoverage.map(x => x.coverageId), byKind };
     return s;
   }
-  function reconcile(previous, items, identity = {}) {
-    const s = previous ? clone(previous) : { ...identity, schemaVersion: '2.24.0', attempts: [], phaseProgress: PHASES.map(phaseId => ({ phaseId, status: 'not_started', notes: '' })), finalChallengeStatus: null, completed: false, osVerifiedCompleted: false };
+  function reconcile(previous, items, identity = {}, schemaVersion = '2.25.0') {
+    const s = previous ? clone(previous) : { ...identity, schemaVersion, attempts: [], phaseProgress: PHASES.map(phaseId => ({ phaseId, status: 'not_started', notes: '' })), finalChallengeStatus: null, completed: false, osVerifiedCompleted: false };
     const old = new Map((s.queue || []).map(x => [x.coverageId, x]));
-    const changed = previous && stable((s.queue || []).map(x => [x.coverageId, x.sourceVersion])) !== stable(items.map(x => [x.coverageId, x.sourceVersion]));
+    const newIds = new Set(items.map(x => x.coverageId));
+    const requiredChanged = !!previous && (items.some(x => !old.has(x.coverageId) || old.get(x.coverageId).sourceVersion !== x.sourceVersion) || (s.queue || []).some(x => ['vocabulary', 'grammar'].includes(x.kind) && !newIds.has(x.coverageId)));
     s.queue = items.map(item => {
       const prior = old.get(item.coverageId);
-      return prior?.sourceVersion === item.sourceVersion ? { ...prior, ...item } : { ...item, state: 'NOT_YET_PRACTICED', remainingReason: 'not_asked', validationNote: prior ? '教材或訂正已更新，舊證據不適用。' : '' };
+      if (prior?.sourceVersion === item.sourceVersion) return { ...prior, ...item, state: practiced(prior) ? 'PRACTICED' : 'NOT_YET_PRACTICED' };
+      return { ...item, state: 'NOT_YET_PRACTICED', remainingReason: 'not_asked', validationNote: prior ? '教材已更新，舊證據不適用。' : '' };
     });
-    if (changed) {
+    s.schemaVersion = schemaVersion;
+    if (requiredChanged) {
       s.completed = s.osVerifiedCompleted = false; s.finalChallengeStatus = null;
       s.phaseProgress = s.phaseProgress.map(p => p.phaseId === 'final_challenge' ? { ...p, status: 'not_started', notes: '教材更新後需重新完成 Final Challenge。' } : p);
       s.activeAttempt = null;
@@ -391,6 +406,11 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
     const u = words(utterance).join(' '), t = words(target).join(' ');
     if (!t) return false;
     return (' ' + u + ' ').includes(' ' + t + ' ') || (' ' + u + ' ').includes(' ' + t + 's ') || (' ' + u + ' ').includes(' ' + t + "'s ");
+  }
+  function capitalizationChoice(value) {
+    const v = text(value).toLowerCase();
+    const lower = /\blower(?:case)?\b|小寫/.test(v), capital = /\b(?:capital|uppercase|upper-case)\b|大寫/.test(v);
+    return lower === capital ? null : lower ? 'lowercase' : 'capital';
   }
   function assess(item, e) {
     const fail = (remainingReason, validationNote) => ({ ok: false, remainingReason, validationNote });
@@ -406,7 +426,8 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
     if (!Number.isSafeInteger(e.sequence) || e.sequence < 1) return fail('wrong_task_mode', '缺少本次實際提問順序。');
     if (e.taskMode === 'vocabulary_production' || (e.taskMode === 'correction_transfer' && item.component === 'Vocabulary')) {
       if (!containsTarget(e.learnerUtterance, item.target)) return fail('coach_only_target', 'Learner 回答中沒有實際產出目標字。');
-      if (words(e.learnerUtterance).length < 3 || e.newContext !== true) return fail('wrong_task_mode', '需要新情境中的句子，單獨唸字不算運用。');
+      if (e.taskMode === 'correction_transfer' && e.newContext !== true) return fail('wrong_task_mode', '舊版訂正 Coverage 需要新情境。');
+      return { ok: true, productionQuality: ['acceptable', 'needs_review'].includes(e.productionQuality) ? e.productionQuality : 'not_assessed', needsReview: e.productionQuality === 'needs_review' };
     }
     if (e.taskMode === 'spelling_recall') {
       if (!/spell|letter|拼|字母/i.test(e.newPrompt) || !containsTarget(e.newPrompt,item.target)) return fail('wrong_task_mode', '沒有針對這個字的獨立拼字提問。');
@@ -414,21 +435,40 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
       if (e.utteranceReliability !== 'confirmed' || !/^[a-z](?:[\s,.-]+[a-z])+$/i.test(letters)) return fail('unreliable_transcript', '需確認分開的字母序列，不能用整個單字代替。');
       const spoken = text(e.learnerUtterance).match(/\b[a-z](?:[\s,.-]+[a-z]){1,}\b/gi) || [];
       if (!spoken.some(s => s.replace(/[^a-z]/gi, '').toLowerCase() === letters.replace(/[^a-z]/gi, '').toLowerCase())) return fail('wrong_task_mode', '字母序列沒有出現在實際回答中。');
-      // A reliable but misspelled attempt counts as practice, never as mastery.
+      return { ok: true };
     }
     if (e.taskMode === 'grammar_application') {
       if (e.grammarRuleId !== item.coverageId) return fail('wrong_task_mode', '未對應這一條文法。');
       if (item.evidenceType === 'capitalization_decision') {
-        if (!/capital|lowercase|upper.?case|大寫|小寫/i.test(e.newPrompt) || !/capital|lowercase|upper.?case|大寫|小寫/i.test(e.learnerUtterance)) return fail('wrong_task_mode', '大／小寫要有口頭選擇，不能只看自動轉錄的字形。');
+        const choice = capitalizationChoice(e.learnerUtterance);
+        if (!/capital|lowercase|upper.?case|大寫|小寫/i.test(e.newPrompt) || !choice) return fail('no_learner_response', '需要 Learner 實際回答大寫或小寫；Okay／Yeah 不算答案。');
         if(e.grammarTask !== item.grammarTask || !text(e.caseExample).trim() || !e.newPrompt.toLowerCase().includes(e.caseExample.toLowerCase())) return fail('wrong_task_mode','需記錄這條規則實際提問的例子與 grammarTask。');
         const title='(?:aunt|uncle|cousin|mom|mum|mother|dad|father|son|daughter|sister|brother|grandma|grandpa|grandmother|grandfather|doctor|professor|captain|president|queen|king|judge)';
-        if(item.grammarTask==='possessive_title' && !new RegExp('\\b(?:my|your|his|her|our|their|its|[a-z]+[’\u0027]s)\\s+'+title+'\\b','i').test(e.caseExample)) return fail('wrong_task_mode','這項需要所有格＋稱謂的例子。');
+        if(item.grammarTask==='possessive_title' && !new RegExp('\\b(?:my|your|his|her|our|their|its|[a-z]+[’\\u0027]s)\\s+'+title+'\\b','i').test(e.caseExample)) return fail('wrong_task_mode','這項需要所有格＋稱謂的例子。');
         if(item.grammarTask==='title_with_name' && !new RegExp('\\b'+title+'\\s+[a-z]+\\b','i').test(e.caseExample)) return fail('wrong_task_mode','這項需要稱謂＋名字的例子。');
         if(item.grammarTask==='title_replacing_name' && (!new RegExp('\\b'+title+'\\b','i').test(e.caseExample) || new RegExp('\\b(?:my|your|his|her|our|their)\\s+'+title,'i').test(e.caseExample))) return fail('wrong_task_mode','這項需要稱謂代替人名的例子。');
-      } else if (e.newContext !== true || !text(e.ruleApplication).trim()) return fail('wrong_task_mode', '缺少這條規則的新情境應用說明。');
+        const accuracy = choice === item.expectedAnswer ? 'correct' : 'incorrect';
+        return { ok: true, accuracy, needsReview: accuracy === 'incorrect', answerValue: choice };
+      }
+      if (e.newContext !== true || !text(e.ruleApplication).trim()) return fail('wrong_task_mode', '缺少這條規則的新情境應用說明。');
+      const accuracy = ['correct', 'incorrect'].includes(e.accuracy) ? e.accuracy : 'not_assessed';
+      return { ok: true, accuracy, needsReview: accuracy === 'incorrect' };
     }
     if (e.taskMode === 'correction_transfer' && (e.newContext !== true || e.correctionId !== item.correctionId || !text(e.transferFocus).trim())) return fail('wrong_task_mode', '需對應這筆訂正，在新情境測試原問題。');
     return { ok: true };
+  }
+  function normalizeSpeakingCorrections(raw, queue) {
+    if (!Array.isArray(raw)) throw new Error('V2.25 Report 需包含 speakingCorrections 陣列。');
+    return raw.map((c, i) => {
+      if (!c || typeof c !== 'object') throw new Error('speakingCorrections[' + i + '] 格式不正確。');
+      const original = text(c.original).trim(), better = text(c.better).trim(), reason = text(c.reason).trim();
+      if (!original || !better || !reason || typeof c.learnerRetried !== 'boolean') throw new Error('每筆 speaking correction 需有 original、better、reason 與 learnerRetried。');
+      const retryUtterance = text(c.retryUtterance).trim(), target = text(c.target).trim();
+      if (c.learnerRetried && !retryUtterance) throw new Error('learnerRetried=true 時需保留 retryUtterance。');
+      const coverageId = text(c.coverageId).trim();
+      if (coverageId && !queue.some(x => x.coverageId === coverageId)) throw new Error('speaking correction 的 coverageId 無法對應本課。');
+      return { ...(target ? { target } : {}), ...(coverageId ? { coverageId } : {}), original, better, reason, learnerRetried: c.learnerRetried, ...(retryUtterance ? { retryUtterance } : {}) };
+    });
   }
   function applyReport(previous, raw) {
     const s = clone(previous);
@@ -439,18 +479,21 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
       return { state: s, report: oldAttempt.report, duplicate: true };
     }
     if (!s.activeAttempt || s.activeAttempt.id !== raw.continuationAttemptId) throw new Error('找不到這次 attempt，請先由網站準備／續練口說內容。');
+    const attemptSimplified = atLeast(s.activeAttempt.schemaVersion || '2.24.0', 2, 25);
+    if (attemptSimplified !== isSimplifiedReport(raw)) throw new Error('Report schemaVersion 與這次口說內容不符，請使用同一份 Brief 產生回報。');
     if (!Array.isArray(raw.coverageChecks) || !Array.isArray(raw.phaseProgress)) throw new Error('Report 需包含 coverageChecks 與 phaseProgress 陣列。');
+    const speakingCorrections = isSimplifiedReport(raw) ? normalizeSpeakingCorrections(raw.speakingCorrections, s.queue) : Array.isArray(raw.speakingCorrections) ? normalizeSpeakingCorrections(raw.speakingCorrections, s.queue) : [];
     const allowed = new Map(s.activeAttempt.items.map(x => [x.coverageId, x.sourceVersion]));
     const warnings = [], checks = [], seen = new Set();
     for (const e of raw.coverageChecks) {
       const item = s.queue.find(x => x.coverageId === e?.coverageId);
       if (!item || allowed.get(item.coverageId) !== e.sourceVersion) { warnings.push('忽略未知、已完成或舊版本 Coverage：' + text(e?.coverageId)); continue; }
-      if (seen.has(item.coverageId)) { warnings.push('同項有多筆嘗試；保留已取得的有效證據。'); }
+      if (seen.has(item.coverageId)) warnings.push('同項有多筆嘗試；保留已取得的有效證據。');
       seen.add(item.coverageId);
       const result = assess(item, e);
       checks.push({ ...clone(e), ...result, status: result.ok ? 'practiced' : 'not_tested', label: item.label, target: item.target, kind: item.kind, lessonId: item.lessonId });
-      if (result.ok) { item.state = 'PRACTICED_RELIABLY'; item.evidence = { ...clone(e), attemptId: raw.continuationAttemptId }; delete item.remainingReason; delete item.validationNote; }
-      else if (item.state !== 'PRACTICED_RELIABLY') Object.assign(item, result);
+      if (result.ok) { item.state = 'PRACTICED'; item.evidence = { ...clone(e), ...result, attemptId: raw.continuationAttemptId }; delete item.remainingReason; delete item.validationNote; }
+      else if (!practiced(item)) Object.assign(item, result);
     }
     summarize(s);
     const rank = { not_started: 0, partial: 1, completed: 2 };
@@ -459,29 +502,34 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
       if (p && rank[p.status] !== undefined && text(p.notes).trim() && rank[p.status] > rank[phase.status]) Object.assign(phase, { status: p.status, notes: p.notes });
     }
     const f = raw.finalChallenge || {};
-    const currentEvidence = s.completedCoverage.filter(x => x.evidence.attemptId === raw.continuationAttemptId);
+    const currentEvidence = s.completedCoverage.filter(x => x.evidence?.attemptId === raw.continuationAttemptId);
     const afterQueue = s.queue.length > 0 && !s.remainingCoverage.length && Number.isSafeInteger(f.sequence) && f.sequence > 0 && currentEvidence.every(x => x.evidence.sequence < f.sequence);
-    const finalOK = afterQueue && f.learnerFinished === true && f.independentProduction === true && f.coachSuppliedAnswer === false && f.feedbackGiven === true && text(f.newPrompt).trim() && text(f.learnerUtterance).trim() && ['confirmed', 'likely'].includes(f.utteranceReliability) && f.transcriptionIssue === false;
+    const reliableFinal = text(f.newPrompt).trim() && text(f.learnerUtterance).trim() && ['confirmed', 'likely'].includes(f.utteranceReliability) && f.transcriptionIssue === false;
+    const finalOK = isSimplifiedReport(raw) ? afterQueue && f.learnerFinished === true && f.feedbackGiven === true && reliableFinal : afterQueue && f.learnerFinished === true && f.independentProduction === true && f.coachSuppliedAnswer === false && f.feedbackGiven === true && reliableFinal;
     if (finalOK) s.finalChallengeStatus = { ...clone(f), verified: true, attemptId: raw.continuationAttemptId };
     const finalPhase = s.phaseProgress.find(x => x.phaseId === 'final_challenge');
-    if (!s.finalChallengeStatus?.verified && finalPhase.status === 'completed') { finalPhase.status = 'partial'; warnings.push('Final Challenge 缺少獨立完整回答、回饋，或發生在 Coverage 補齊之前。'); }
+    if (finalOK && finalPhase) finalPhase.status = 'completed';
+    if (!s.finalChallengeStatus?.verified && finalPhase?.status === 'completed') { finalPhase.status = 'partial'; warnings.push('Final Challenge 缺少完整回答、回饋，或發生在 Required Coverage 補齊之前。'); }
     let endReason = raw.endReason;
     const stop = raw.stopContext || {};
     if (endReason === 'learner_agreed_stop' && (!text(stop.externalReason).trim() || /time limit|long conversation|deadline|minutes elapsed|時間到|聊太久|時間上限/i.test(stop.externalReason) || !text(stop.learnerWords).trim() || stop.coachInitiatedWrapUp !== false || /^(yes|yeah|okay|ok|thanks)[.! ]*$/i.test(stop.learnerWords.trim()))) { endReason = 'incomplete'; warnings.push('一般 Yes／Okay、時間壓力或 Coach 誘導收尾，不是有效停止同意。'); }
     if (endReason === 'learner_requested_stop' && !text(stop.learnerWords).trim()) { endReason = 'incomplete'; warnings.push('缺少 Learner 明確要求停止的原話。'); }
     s.gptClaimedCompleted = raw.completed === true;
-    s.completed = s.osVerifiedCompleted = !!(s.queue.length && !s.remainingCoverage.length && s.phaseProgress.every(p => p.status === 'completed') && s.finalChallengeStatus?.verified);
+    const legacyPhasesComplete = s.phaseProgress.every(p => p.status === 'completed');
+    s.completed = s.osVerifiedCompleted = !!(s.queue.length && !s.remainingCoverage.length && s.finalChallengeStatus?.verified && (isSimplifiedReport(raw) || legacyPhasesComplete));
     s.endReason = s.completed ? 'completed' : ['learner_requested_stop', 'learner_agreed_stop', 'technical_interruption'].includes(endReason) ? endReason : 'incomplete';
     if (s.gptClaimedCompleted && !s.completed) warnings.push('GPT 宣稱完成，但 English OS 驗證未完成；已保存有效證據。');
     const minutes = typeof raw.speakingMinutes === 'number' && Number.isFinite(raw.speakingMinutes) && raw.speakingMinutes >= 0 && ['measured', 'estimated'].includes(raw.timeBasis) ? raw.speakingMinutes : null;
-    const report = { ...clone(raw), schemaVersion: raw.schemaVersion, completed: s.completed, gptClaimedCompleted: s.gptClaimedCompleted, osVerifiedCompleted: s.completed, endReason: s.endReason, phaseProgress: clone(s.phaseProgress), finalChallenge: clone(s.finalChallengeStatus || {}), coverageChecks: checks, sessionCoverage: clone(s.sessionCoverage), validationWarnings: warnings, speakingMinutes: minutes, timeBasis: minutes === null ? 'not_recorded' : raw.timeBasis, serverVerified: true };
+    const report = { ...clone(raw), schemaVersion: raw.schemaVersion, completed: s.completed, gptClaimedCompleted: s.gptClaimedCompleted, osVerifiedCompleted: s.completed, endReason: s.endReason, phaseProgress: clone(s.phaseProgress), finalChallenge: clone(s.finalChallengeStatus || {}), coverageChecks: checks, speakingCorrections, sessionCoverage: clone(s.sessionCoverage), validationWarnings: warnings, speakingMinutes: minutes, timeBasis: minutes === null ? 'not_recorded' : raw.timeBasis, serverVerified: true };
     s.attempts.push({ id: raw.continuationAttemptId, rawReport: clone(raw), report });
     s.activeAttempt = null;
     return { state: summarize(s), report, duplicate: false };
   }
-  function prepare(s, attemptId) {
+  function prepare(s, attemptId, schemaVersion = '2.25.0') {
     const next = clone(s);
-    if (!next.activeAttempt) next.activeAttempt = { id: attemptId, items: next.remainingCoverage.map(x => ({ coverageId: x.coverageId, sourceVersion: x.sourceVersion })) };
+    const currentVersion = next.activeAttempt?.schemaVersion || (next.activeAttempt ? '2.24.0' : null);
+    if (next.activeAttempt && atLeast(currentVersion, 2, 25) !== atLeast(schemaVersion, 2, 25)) next.activeAttempt = null;
+    if (!next.activeAttempt) next.activeAttempt = { id: attemptId, schemaVersion, items: next.remainingCoverage.map(x => ({ coverageId: x.coverageId, sourceVersion: x.sourceVersion })) };
     return next;
   }
   function publicState(s) {
@@ -489,12 +537,12 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
     const { attempts, ...rest } = s;
     return { ...rest, attemptCount: attempts.length, reports: attempts.map(a => a.report) };
   }
-  root.EnglishSpeakingQueue = { PHASES, REASONS, stable, version, isQueueReport, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget };
+  root.EnglishSpeakingQueue = { PHASES, REASONS, stable, version, isQueueReport, isSimplifiedReport, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget, capitalizationChoice };
 })(globalThis);
 
 // END GENERATED speaking-queue.js
 // BEGIN GENERATED speaking-client.js
-// V2.24 UI. The server owns sessions; local cache only renders the last response.
+// V2.25 UI. The server owns sessions; local cache only renders the last response.
 var speakingQueueCache = {}, speakingQueueBusy = false, speakingQueueGeneration = 0;
 const pendingSpeakingText = localStorage.getItem('hanne_speaking_pending_report_v224');
 if(pendingSpeakingText && document.getElementById('speakingReport')) document.getElementById('speakingReport').value=pendingSpeakingText;
@@ -511,7 +559,11 @@ function renderSpeakingQueuePanel() {
   if (!s) { box.innerHTML = '<div class="note">準備口說內容後，這裡會保存本次已練與剩餘項目。語音中斷後可以接續同一場練習。</div>'; return; }
   const c = s.sessionCoverage;
   const reason = { not_asked: '尚未提問', no_learner_response: '尚無完整回答', unreliable_transcript: '語音待確認', wrong_task_mode: '需對應的任務／新版本', coach_only_target: '回答中未產出目標字', model_only: '需自己回答', session_stopped: '停止前尚未練習' };
-  box.innerHTML = `<div class="note"><h3>Speaking Coverage · 本次練習</h3><p><b>${c.practiced} / ${c.total}</b> 項已練 · <b>${c.remaining}</b> 項剩餘</p><p>${s.completed ? '全部項目、四階段與 Final Challenge 已完成。' : c.remaining ? '下個練習：' + esc(s.remainingCoverage[0].label) : '項目已練齊，接著完成剩餘階段與 Final Challenge。'}</p><p class="tiny">${esc(s.lessonTitle)} · 同一場練習可跨多次語音接續；時間只記錄，不設上限。進度在回貼 Report 後由伺服器更新。</p><details><summary>查看已練與剩餘清單</summary><ul>${s.queue.map(x => `<li><b>${x.state === 'PRACTICED_RELIABLY' ? '✓' : '○'} ${esc(x.label)}</b>${x.state !== 'PRACTICED_RELIABLY' ? ' — ' + esc(reason[x.remainingReason] || '待練') : ''}${x.validationNote ? `<p class="tiny">${esc(x.validationNote)}</p>` : ''}</li>`).join('')}</ul></details></div>`;
+  const done = x => ['PRACTICED','PRACTICED_RELIABLY'].includes(x.state);
+  const group = (kind,title) => `<div class="item"><b>${title}</b><ul>${s.queue.filter(x=>x.kind===kind).map(x=>`<li><b>${done(x)?'✓':'○'} ${esc(x.label)}</b>${!done(x)?' — '+esc(reason[x.remainingReason]||'待練'):x.evidence?.needsReview?' — 已練，內容需要 Review':''}${x.validationNote?`<p class="tiny">${esc(x.validationNote)}</p>`:''}</li>`).join('')}</ul></div>`;
+  const latest = (s.reports || []).at(-1), corrections = latest?.speakingCorrections || [];
+  const correctionHTML = corrections.length ? `<div class="teaching-section"><h4>Corrections from this session</h4>${corrections.map(x=>`<div class="item"><p><b>${esc(x.original)}</b><br>→ ${esc(x.better)}</p><p class="tiny">${esc(x.reason)}${x.learnerRetried?' · 已重新作答':' · 尚未重新作答'}</p></div>`).join('')}</div>` : '';
+  box.innerHTML = `<div class="note"><h3>Today's Speaking</h3>${group('vocabulary','Vocabulary')}${group('grammar','Grammar')}<p><b>Coverage: ${c.practiced} / ${c.total}</b> · ${c.remaining} 項剩餘</p><p>${s.completed?'Vocabulary、Grammar 與 Final Challenge 已完成。':c.remaining?'下個練習：'+esc(s.remainingCoverage[0].label):'Required Coverage 已練齊，接著完成 Final Challenge。'}</p><p class="tiny">${esc(s.lessonTitle)} · Previous corrections 與 spelling 只作為 Coach 觀察重點，不會增加 Required Coverage。</p>${correctionHTML}</div>`;
 }
 async function speakingQueueRequest(input) {
   const response = await fetch(CLOUD_URL + '/functions/v1/speaking-queue', { method: 'POST', headers: { apikey: CLOUD_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
@@ -542,7 +594,7 @@ function persistVerifiedSpeakingReport(report) {
 async function refreshSpeakingQueue() {
   const id = $('speakingLesson')?.value, generation = speakingQueueGeneration;
   renderSpeakingQueuePanel(); if (!id || speakingQueueBusy) return;
-  try { const result = await speakingQueueRequest({action:'status',lessonId:id}); if(generation !== speakingQueueGeneration || speakingQueueBusy)return; acceptSpeakingQueueResult(result,id); if ($('speakingLesson').value === id) renderSpeakingChecks(); }
+  try { const result = await speakingQueueRequest({action:'status',lessonId:id,schemaVersion:'2.25.0'}); if(generation !== speakingQueueGeneration || speakingQueueBusy)return; acceptSpeakingQueueResult(result,id); if ($('speakingLesson').value === id) renderSpeakingChecks(); }
   catch (_) { /* Last confirmed cache remains visible. Preparation/import fails closed. */ }
 }
 async function prepareSpeakingQueue(newSession = false, open = false) {
@@ -552,8 +604,8 @@ async function prepareSpeakingQueue(newSession = false, open = false) {
   try {
     await cloudSave();
     const data = speakingHandoffData(id);
-    const inventory = EnglishSpeakingQueue.inventory(getLesson(id), data.currentLessonCorrections);
-    const result = await speakingQueueRequest({ action:'prepare', lessonId:id, newSession, sourceFingerprint:EnglishSpeakingQueue.version(inventory) });
+    const inventory = EnglishSpeakingQueue.inventory(getLesson(id), data.currentLessonCorrections, {schemaVersion:'2.25.0'});
+    const result = await speakingQueueRequest({ action:'prepare', lessonId:id, newSession, schemaVersion:'2.25.0', sourceFingerprint:EnglishSpeakingQueue.version(inventory) });
     acceptSpeakingQueueResult(result,id);
     if (result.state.completed) { msg('這一輪已完成；按「完成後開始新一輪」可再次練習。'); return ''; }
     const text = formatSpeakingBrief(data, result.state.speakingSessionId, result.state);
@@ -590,23 +642,22 @@ async function importQueueReport(text) {
 function formatSpeakingBrief(data, id, s) {
   if (!s?.activeAttempt) throw new Error('請先由伺服器準備口說 Session。');
   const remaining = s.remainingCoverage;
-  const compact = x => x ? {coverageId:x.coverageId,sourceVersion:x.sourceVersion,kind:x.kind,target:x.target,label:x.label,taskMode:x.taskMode,state:x.state,...(x.correctionId?{correctionId:x.correctionId}:{}),...(x.evidenceType?{evidenceType:x.evidenceType,grammarTask:x.grammarTask}:{}),...(x.remainingReason?{remainingReason:x.remainingReason}:{})} : null;
-  const schema = {type:'SPEAKING_REPORT',schemaVersion:'2.24.0',speakingSessionId:id,continuationAttemptId:s.activeAttempt.id,lessonId:data.lessonId,lessonTitle:data.lessonTitle,completed:false,endReason:'incomplete',stopContext:{externalReason:'',learnerWords:'',coachInitiatedWrapUp:false},speakingMinutes:null,timeBasis:'not_recorded',phaseProgress:s.phaseProgress.map(p=>({...p})),coverageChecks:[{coverageId:'COPY_EXACT_ID',sourceVersion:'COPY_EXACT_VERSION',taskMode:'COPY_ITEM_TASK_MODE',phaseId:'lesson_application',sequence:1,status:'practiced',newPrompt:'ACTUAL QUESTION',learnerUtterance:'ACTUAL RESPONSE',utteranceReliability:'confirmed',transcriptionIssue:false,learnerFinished:true,modelOnly:false,coachSuppliedAnswer:false,independentProduction:false,newContext:true,grammarRuleId:'ONLY_FOR_GRAMMAR',grammarTask:'COPY_ITEM_GRAMMAR_TASK',caseExample:'EXACT_EXAMPLE_IN_QUESTION',ruleApplication:'ONLY_FOR_GENERAL_GRAMMAR',correctionId:'ONLY_FOR_CORRECTION',transferFocus:'ONLY_FOR_CORRECTION_TRANSFER',letterSequence:'ONLY_FOR_SPELLING e.g. A-N-C-E-S-T-O-R',notes:'ACTUAL EVIDENCE',remainingReason:'not_asked'}],finalChallenge:{sequence:null,newPrompt:'',learnerUtterance:'',utteranceReliability:'not_applicable',transcriptionIssue:false,learnerFinished:false,independentProduction:false,coachSuppliedAnswer:false,feedbackGiven:false},correctionChecks:[],targetsUsedWell:[],targetsToReview:[],grammarToReview:[],pronunciationNotes:[],betterExpressions:[],overallNotes:[]};
-  return `SPEAKING ${s.attemptCount ? 'CONTINUATION' : 'PRACTICE'} · V2.24.0
+  const compact = x => x ? {coverageId:x.coverageId,sourceVersion:x.sourceVersion,kind:x.kind,target:x.target,label:x.label,taskMode:x.taskMode,state:x.state,...(x.evidenceType?{evidenceType:x.evidenceType,grammarTask:x.grammarTask,expectedAnswer:x.expectedAnswer}:{}),...(x.remainingReason?{remainingReason:x.remainingReason}:{})} : null;
+  const schema = {type:'SPEAKING_REPORT',schemaVersion:'2.25.0',speakingSessionId:id,continuationAttemptId:s.activeAttempt.id,lessonId:data.lessonId,lessonTitle:data.lessonTitle,completed:false,endReason:'incomplete',stopContext:{externalReason:'',learnerWords:'',coachInitiatedWrapUp:false},speakingMinutes:null,timeBasis:'not_recorded',phaseProgress:s.phaseProgress.map(p=>({...p})),coverageChecks:[{coverageId:'COPY_EXACT_ID',sourceVersion:'COPY_EXACT_VERSION',taskMode:'vocabulary_production|grammar_application',phaseId:'lesson_application',sequence:1,status:'practiced|not_tested',newPrompt:'ACTUAL QUESTION',learnerUtterance:'ACTUAL RESPONSE',utteranceReliability:'confirmed|likely|uncertain',transcriptionIssue:false,learnerFinished:true,modelOnly:false,coachSuppliedAnswer:false,productionQuality:'acceptable|needs_review',grammarRuleId:'ONLY_FOR_GRAMMAR',grammarTask:'COPY_ITEM_GRAMMAR_TASK',caseExample:'EXACT_EXAMPLE_IN_QUESTION',accuracy:'correct|incorrect',needsReview:false,ruleApplication:'ONLY_FOR_GENERAL_GRAMMAR',notes:'ACTUAL EVIDENCE',remainingReason:'not_asked'}],speakingCorrections:[{target:'OPTIONAL_TARGET',coverageId:'OPTIONAL_REQUIRED_COVERAGE_ID',original:'LEARNER ACTUAL SENTENCE',better:'NATURAL CORRECTION',reason:'SHORT EXPLANATION',learnerRetried:true,retryUtterance:'LEARNER RETRY'}],finalChallenge:{sequence:null,newPrompt:'',learnerUtterance:'',utteranceReliability:'not_applicable',transcriptionIssue:false,learnerFinished:false,independentProduction:false,coachSuppliedAnswer:false,feedbackGiven:false},correctionChecks:[],targetsUsedWell:[],targetsToReview:[],grammarToReview:[],pronunciationNotes:[],betterExpressions:[],overallNotes:[]};
+  return `SPEAKING ${s.attemptCount ? 'CONTINUATION' : 'PRACTICE'} · V2.25.0
 SESSION IDENTITY
 speakingSessionId: ${id}
 continuationAttemptId: ${s.activeAttempt.id}
 lessonId: ${data.lessonId}
 Lesson: ${data.lessonTitle}
 
-HARD SESSION EXECUTION RULE
-You are executing an ordered Coverage Queue. Do not decide independently that enough practice has occurred.
-CURRENT ITEM → ASK NATURAL QUESTION → WAIT FOR COMPLETE LEARNER RESPONSE → VERIFY EVIDENCE → MARK THAT ITEM → NEXT REQUIRED ITEM.
-Before Final Challenge, remainingCoverage MUST equal 0. If > 0, continue the first remaining item. Do not omit items or merge IDs with the same target.
+REQUIRED COVERAGE POLICY
+Required Coverage contains ONLY this lesson's Vocabulary and Grammar. Previous corrections, spelling mistakes, speaking weaknesses, reviewItems and learningFocus are Review Context / Coaching Priority, never extra queue items or completion gates.
+Before Final Challenge, remainingCoverage MUST equal 0. Do not omit Required items. The learner never manages the syllabus; you maintain the queue.
 Do not ask to end because the conversation has been long. Do not say “Let's wrap up”, “That's all for today”, or “We'll practice the rest next time” unless the queue is empty AND four phases/Final Challenge are complete, OR the learner explicitly asks to stop. A technical interruption can save incomplete progress.
 Learner says “You missed something”, “We didn't practice everything”, “There's another word”: immediately audit ALL remaining Coverage and resume the first missing item. Do not ask her which word; she does not manage the syllabus.
 
-CURRENT COVERAGE QUEUE — SERVER-CONFIRMED STARTING STATE
+TODAY'S REQUIRED COVERAGE — SERVER-CONFIRMED STARTING STATE
 TOTAL REQUIRED COVERAGE: ${s.queue.length}
 CURRENT SESSION COMPLETED: ${s.completedCoverage.length}
 REMAINING: ${remaining.length}
@@ -620,13 +671,19 @@ PHASE PROGRESS: ${JSON.stringify(s.phaseProgress)}
 ${s.phaseProgress.find(p=>p.phaseId==='warmup').status==='completed'?'Warm-up already completed. Do NOT restart warm-up. Resume remaining Coverage directly.':'Complete a short lesson-linked warm-up, then resume the queue.'}
 The website does not hear this Voice session live. Maintain only the remaining queue during this attempt; English OS independently verifies the report afterward. If interrupted, output a partial report so reliable evidence can be saved. Never fabricate evidence to pass the gate.
 
-EVIDENCE REQUIREMENTS
-- vocabulary_production: learner actually uses target in a new-context sentence. “Tell me about your spouse” → “We watch movies together” does NOT test spouse production. Prompt-only mentions do not count.
-- grammar_application: ask a task for that exact rule (grammarRuleId = coverageId). Title + Name capitalization, title replacing name capitalization, possessive + title lowercase are three separate tasks. Use grammarTask from that item and put the exact example from your question in caseExample (e.g. Aunt Mary / Good morning, Mom. / my mom). Ask learner to explicitly choose capital/lowercase; automatic transcript capitalization is never evidence. Other grammar requires new-context use plus ruleApplication explaining what was tested.
-- correction_transfer: a new context tests that exact correctionId/problem; record transferFocus. Saying one word does not pass all of its corrections. Model imitation alone does not count.
-- spelling_recall: explicitly ask to spell, obtain confirmed individual letter sequence in learnerUtterance and letterSequence (e.g. A-N-C-E-S-T-O-R). Saying “ancestor” normally does not test spelling. If letters are uncertain, status=not_tested; do not infer spelling from an auto-assembled word.
-- Separate IDs require separate matching tasks; report actual sequence numbers in this attempt. Only lesson_application/knowledge_integration evidence fills coverage. Final Challenge cannot retroactively fill missed items.
-- practiced means reliable practice, not mastery or necessarily correct. Reliable wrong spelling/case choices may count as practice and need teaching. uncertain/transcriptionIssue evidence remains not_tested. Preserve earlier valid evidence even if a later model is given.
+SPEAKING LOOP
+For each required Vocabulary item:
+ASK NATURALLY → WAIT UNTIL LEARNER FINISHES → VERIFY TARGET WAS ACTUALLY PRODUCED → MARK VOCABULARY PRACTICED → CORRECT IMPORTANT LANGUAGE ERRORS → ASK LEARNER TO RETRY IF CORRECTED → OPTIONAL NATURAL FOLLOW-UP → NEXT ITEM.
+For each required Grammar item:
+ASK ONE APPLICATION QUESTION → WAIT → VERIFY THE LEARNER ACTUALLY ANSWERED → MARK PRACTICED → TEACH/CORRECT IF WRONG → RETRY IF USEFUL → NEXT ITEM.
+When all Vocabulary + Grammar are PRACTICED: FINAL CHALLENGE → FEEDBACK → REPORT.
+
+EVIDENCE / QUALITY SEPARATION
+- vocabulary_production: learner must actually SAY the target. Prompt-only target or “I have a sister” for sibling is NOT practiced. “My niece five years old” contains niece, so Coverage=PRACTICED even though productionQuality=needs_review and a speakingCorrection is required.
+- grammar_application: ask that exact rule (grammarRuleId=coverageId). The learner must actually answer. Okay/Yeah/silence/filler/unrelated words do not count. A reliable wrong capital/lowercase choice is PRACTICED with accuracy=incorrect and needsReview=true; teach it and invite Retry.
+- Title + Name, title replacing name, and possessive + title are separate tasks. Keep grammarTask and the exact caseExample from the question. Automatic transcript capitalization is never evidence.
+- Practiced is not Mastered. Incorrect is not Not Practiced. Coverage records whether a real attempt happened; speakingCorrections/accuracy record quality.
+- Report actual sequence numbers. Only lesson_application/knowledge_integration evidence fills Coverage. Final Challenge cannot retroactively fill a missed Required item.
 
 VOICE PACING / TIME
 Time is recorded, never a limit. No countdown, 8–12 minute target, deadline or phase quota. 18/25+ minutes is fine. Actual minutes only, estimated clearly labeled; unknown=null/not_recorded. Record this attempt's time, not prior attempts again.
@@ -634,25 +691,31 @@ Learner turn completion > silence duration. Pauses, um, I think, but, repetition
 If pasted in text mode, only say:「口說內容已準備好，請開啟這個 Project 的語音模式。」Do not simulate voice answers. In voice, English questions and natural transitions; Traditional Chinese for requested explanations, then return to English.
 
 CLARIFICATION / CORRECTION
-LISTEN → WAIT → VERIFY → ELICIT → EXPAND → CORRECT → RETRY → TRANSFER → RECORD.
+ASK → WAIT → LEARNER FINISHES → CHECK TARGET PRODUCTION → CHECK IMPORTANT LANGUAGE ERRORS → CORRECT IF NEEDED → LEARNER RETRY → OPTIONAL FOLLOW-UP → NEXT TARGET.
 Clarify unreliable hearing before evaluation; never turn a transcript error into a learner weakness or infer pronunciation from text. Explain requested vocabulary/grammar and return to the same item. If off topic, acknowledge and return to this lesson without asking learner to repeat the syllabus.
-Do not interrupt formulation (especially 2–3 sentences). Correct only after the complete answer unless meaning is impossible to understand. Give the smallest hint first; learner explicitly asking for help can receive it. Allow her Retry and later new-context transfer. Do not treat immediate model repetition as independent transfer. No invented KPI or fluency claims from duration alone.
+Do not interrupt formulation (especially 2–3 sentences). Correct only after the complete answer unless meaning is impossible to understand. Prioritize target usage, sentence completeness, tense, verb form, article, singular/plural, important preposition, clearly unnatural expressions and meaning-changing errors. Ignore harmless hesitation, filler and fragments while the learner is still building the answer.
+For important corrections use: “My sentence: <actual> / Better: <natural> / Why: <short explanation>”, then “Now try it again.” Why may use Traditional Chinese. Save the observed correction and Retry in speakingCorrections. A Retry never creates another Coverage ID.
+
+HARD RULE — TEACH BEFORE PRAISE
+Praise must never replace necessary teaching. If the learner makes a meaningful language error, do not say only “Perfect”, “Great”, “You nailed it” or similar and move on. Address the important error after the learner finishes. Positive feedback must be specific and accurate.
+A response counts only if it answers the task. Do not infer an intended answer from Yes, Okay, Yeah, silence, filler or an unrelated response. Re-ask the smallest necessary question.
+Previous corrections are Coaching Priority. Observe them naturally inside today's Vocabulary/Grammar conversation. If a weakness is stable, record that context; if it recurs, correct it. Do not create a separate transfer or spelling test, and do not label one observed error as recurring.
 
 FINAL CHALLENGE / STOP
 Flow: warmup → lesson_application → knowledge_integration → final_challenge. Keep completed phases; complete any remaining integration task before Final Challenge.
-ONLY when queue empty: ask a distinct integration challenge, wait for learner's complete independent answer, then give feedback. Record prompt, utterance, reliability and sequence AFTER all accepted coverage tasks. learnerFinished=true, independentProduction=true, coachSuppliedAnswer=false, feedbackGiven=true are all required.
-Audit again before normal completion. completed=true/endReason=completed only if all required items and all four phases plus final conditions are satisfied.
+ONLY when queue empty: ask one natural integration challenge using 2–3 suitable targets, never force all vocabulary into one answer. Ask for 2–3 connected sentences, wait until the answer is complete, then give feedback. Record prompt, utterance, reliability and sequence AFTER all accepted Coverage tasks.
+Audit again before normal completion. completed=true/endReason=completed only when all required Vocabulary and Grammar are PRACTICED and Final Challenge has learnerFinished=true plus feedbackGiven=true.
 Otherwise save completed=false with endReason=incomplete/learner_requested_stop/learner_agreed_stop/technical_interruption. requested_stop needs actual learner stop words. agreed_stop needs a real external reason and explicit learner agreement; Coach-led “wrap up?” + “Yeah/Okay” is invalid. Silence and “I'm done” about one answer do not mean ending the session.
 If stopped, missing reasons: not_asked/no_learner_response/unreliable_transcript/wrong_task_mode/coach_only_target/model_only/session_stopped. Preserve actual partial evidence; do not label missed teaching as learner failure.
 
 REPORT SCHEMA
-After actual voice ends, briefly summarize feedback, then return ONE complete SPEAKING_REPORT JSON to paste into English OS. Replace example placeholders with real observations; omit untested coverage rows or mark not_tested. phaseProgress keeps all four ids with completed/partial/not_started and notes. Sequence is a positive integer for actual tasks in this attempt; Final Challenge must have a later sequence. Report only this attempt's new evidence.
+After actual voice ends, briefly summarize feedback, then return ONE complete SPEAKING_REPORT JSON to paste into English OS. Replace placeholders with real observations. phaseProgress keeps all four ids. Sequence is a positive integer for actual tasks in this attempt; Final Challenge must have a later sequence. Report only this attempt's new evidence. speakingCorrections contains observed corrections only; do not invent recurring errors.
 ${JSON.stringify(schema,null,2)}
-Optional correctionChecks retain the exact three answers from lesson data and use this schema:
+Optional correctionChecks retain the exact three answers from lesson data and may describe a previous weakness observed naturally during Required Coverage; they are Review Context, never Hard Coverage:
 ${JSON.stringify(SPEAKING_REPORT_TEMPLATE.correctionChecks[0])}
-Only reliable matching new-task evidence can support oralTransfer passed/needs_practice; otherwise not_tested. Written checking is independent of speaking. betterExpressions entries: {original,better,reason}; summary arrays contain strings.
+Spelling stays not_tested unless a separate spelling focus was explicitly requested. Only reliable matching evidence can support oralTransfer; otherwise not_tested. Written checking is independent of speaking.
 
-CURRENT LESSON DATA — CONTEXT, NOT EXTRA REQUIRED QUEUE
+REVIEW CONTEXT / COACHING PRIORITY — NEVER EXTRA REQUIRED COVERAGE
 ${JSON.stringify({curriculum:data.curriculum,currentLessonCorrections:data.currentLessonCorrections,olderReviewCorrections:data.olderReviewCorrections,reviewItems:data.reviewItems,learningFocus:data.learningFocus},null,2)}`;
 }
 
@@ -1421,23 +1484,7 @@ function speakingCoverageVersion(value){
 }
 function speakingCoverageItems(lessonId,corrections){
  const lesson=getLesson(lessonId);if(!lesson)return [];
- const curriculum=lesson.curriculum||{},items=new Map();
- const add=(kind,target,label,source,practiceTarget=target)=>{
-  if(!target)return;
-  const coverageId=JSON.stringify([lessonId,kind,target]);
-  const item={coverageId,sourceVersion:speakingCoverageVersion(source),lessonId,kind,target:practiceTarget,label};
-  items.set(coverageId,item);
- };
- const vocabulary=[...(curriculum.extendedVocabulary||[]),...(curriculum.mainVocabulary||[])];
- vocabulary.filter(x=>!x.excludeFromPractice).forEach(x=>add("vocabulary",x.term,x.term,{term:x.term,meaning:x.meaning||"",partOfSpeech:x.partOfSpeech||x.pos||""}));
- (curriculum.grammar||[]).filter(x=>!x.excludeFromPractice).forEach(x=>{
-  const target=typeof x==="string"?x:x.rule||x.title||x.name||"";
-  add("grammar",target,target,x);
- });
- (corrections||speakingCorrectionRecords().filter(x=>x.lessonId===lessonId)).forEach(x=>{
-  add("correction",x.correctionId,x.target+" · "+(x.round||x.component)+" 訂正",{prompt:x.prompt,answerStatus:x.answerStatus,...speakingCorrectionSnapshot(x)},x.target);
- });
- return [...items.values()];
+ return EnglishSpeakingQueue.inventory(lesson,corrections||speakingCorrectionRecords().filter(x=>x.lessonId===lessonId),{schemaVersion:"2.25.0"});
 }
 function speakingCoverageProgress(lessonId,items=speakingCoverageItems(lessonId)){
  const reports=JSON.parse(localStorage.getItem("english_os_speaking_reports")||"[]").filter(r=>r.lessonId===lessonId);
@@ -1483,16 +1530,16 @@ function speakingHandoffData(lessonId){
   learningFocus:speakingLearningFocus(lessonId,[...currentLessonCorrections,...olderReviewCorrections])};
 }
 const SPEAKING_PRACTICE_PLAN={
- timePolicy:"record_actual_duration_only",timeLimitMinutes:null,coveragePolicy:"all_current_lesson_this_session",delivery:"ChatGPT Project voice mode",websiteRole:"prepare_content_and_import_report",
+ timePolicy:"record_actual_duration_only",timeLimitMinutes:null,coveragePolicy:"required_vocabulary_and_grammar_only",delivery:"ChatGPT Project voice mode",websiteRole:"prepare_content_and_import_report",
  phases:[
   {id:"warmup",name:"暖身",goal:"用一兩個與本課銜接的生活問題建立節奏，先能說完整句，再依能力逐步擴展。"},
-  {id:"lesson_application",name:"本課應用",goal:"本次全部單字、文法與訂正都實際練習；每個完整回答後再訂正與 Retry，不因時間留下漏項。"},
+  {id:"lesson_application",name:"本課應用",goal:"本次全部 Vocabulary 與 Grammar 都實際練習；重要錯誤在完整回答後訂正並 Retry。"},
   {id:"knowledge_integration",name:"舊知識整合",goal:"把相關舊課、Review 弱項與本課內容接在同一段對話。"},
   {id:"final_challenge",name:"Final Challenge",goal:"以新的完整情境統整本課與舊知識，先讓學習者獨立回答，再給整體回饋。"}
  ]
 };
 
-const SPEAKING_REPORT_TEMPLATE={"type": "SPEAKING_REPORT", "schemaVersion": "2.23.0", "speakingSessionId": "COPY_FROM_BRIEF", "lessonId": "COPY_FROM_BRIEF", "lessonTitle": "COPY_FROM_BRIEF", "speakingMinutes": null, "timeBasis": "estimated|measured|not_recorded", "phaseProgress": [{"phaseId": "warmup", "status": "completed|partial|not_started", "notes": ""}, {"phaseId": "lesson_application", "status": "completed|partial|not_started", "notes": ""}, {"phaseId": "knowledge_integration", "status": "completed|partial|not_started", "notes": ""}, {"phaseId": "final_challenge", "status": "completed|partial|not_started", "notes": ""}], "correctionChecks": [{"correctionId": "COPY_EXACT_CORRECTION_ID", "originalAnswer": "COPY_EXACT_ORIGINAL_ANSWER", "gptSuggestedAnswer": "COPY_EXACT_GPT_SUGGESTED_ANSWER", "learnerCorrection": "COPY_EXACT_LEARNER_CORRECTION_OR_NULL", "writtenStatus": "correct|needs_revision|not_checked", "suggestedCorrection": "", "oralTransfer": "passed|needs_practice|not_tested", "newPrompt": "", "learnerUtterance": "", "utteranceReliability": "confirmed|likely|uncertain|not_applicable", "transcriptionIssue": false, "reason": ""}], "targetsUsedWell": [], "targetsToReview": [], "grammarToReview": [], "pronunciationNotes": [], "betterExpressions": [{"original": "", "better": "", "reason": ""}], "overallNotes": [], "completed": false, "coverageChecks": [{"coverageId": "COPY_EXACT_COVERAGE_ID", "sourceVersion": "COPY_EXACT_SOURCE_VERSION", "status": "practiced|not_tested", "newPrompt": "", "learnerUtterance": "", "utteranceReliability": "confirmed|likely|uncertain|not_applicable", "transcriptionIssue": false, "notes": ""}], "endReason": "completed|learner_requested_stop|learner_agreed_stop|technical_interruption", "finalChallenge": {"learnerFinished": false, "independentProduction": false, "coachSuppliedAnswer": false, "feedbackGiven": false}};
+const SPEAKING_REPORT_TEMPLATE={"type": "SPEAKING_REPORT", "schemaVersion": "2.25.0", "speakingSessionId": "COPY_FROM_BRIEF", "lessonId": "COPY_FROM_BRIEF", "lessonTitle": "COPY_FROM_BRIEF", "speakingMinutes": null, "timeBasis": "estimated|measured|not_recorded", "phaseProgress": [{"phaseId": "warmup", "status": "completed|partial|not_started", "notes": ""}, {"phaseId": "lesson_application", "status": "completed|partial|not_started", "notes": ""}, {"phaseId": "knowledge_integration", "status": "completed|partial|not_started", "notes": ""}, {"phaseId": "final_challenge", "status": "completed|partial|not_started", "notes": ""}], "correctionChecks": [{"correctionId": "COPY_EXACT_CORRECTION_ID", "originalAnswer": "COPY_EXACT_ORIGINAL_ANSWER", "gptSuggestedAnswer": "COPY_EXACT_GPT_SUGGESTED_ANSWER", "learnerCorrection": "COPY_EXACT_LEARNER_CORRECTION_OR_NULL", "writtenStatus": "correct|needs_revision|not_checked", "suggestedCorrection": "", "oralTransfer": "passed|needs_practice|not_tested", "newPrompt": "", "learnerUtterance": "", "utteranceReliability": "confirmed|likely|uncertain|not_applicable", "transcriptionIssue": false, "reason": ""}], "speakingCorrections": [{"target": "", "original": "", "better": "", "reason": "", "learnerRetried": false, "retryUtterance": ""}], "targetsUsedWell": [], "targetsToReview": [], "grammarToReview": [], "pronunciationNotes": [], "betterExpressions": [{"original": "", "better": "", "reason": ""}], "overallNotes": [], "completed": false, "coverageChecks": [{"coverageId": "COPY_EXACT_COVERAGE_ID", "sourceVersion": "COPY_EXACT_SOURCE_VERSION", "status": "practiced|not_tested", "newPrompt": "", "learnerUtterance": "", "utteranceReliability": "confirmed|likely|uncertain|not_applicable", "transcriptionIssue": false, "productionQuality": "acceptable|needs_review", "accuracy": "correct|incorrect", "needsReview": false, "notes": ""}], "endReason": "completed|learner_requested_stop|learner_agreed_stop|technical_interruption", "finalChallenge": {"learnerFinished": false, "independentProduction": false, "coachSuppliedAnswer": false, "feedbackGiven": false}};
 function speakingHasReliableOralEvidence(check){
  return ["passed","needs_practice"].includes(check.oralTransfer)&&["confirmed","likely"].includes(check.utteranceReliability)&&
   typeof check.newPrompt==="string"&&!!check.newPrompt.trim()&&typeof check.learnerUtterance==="string"&&!!check.learnerUtterance.trim();
@@ -1512,16 +1559,11 @@ function speakingLearningFocus(lessonId,contexts){
   vocabulary:contexts.filter(c=>c.component==="Vocabulary").map(written),
   grammar:contexts.filter(c=>c.component==="Grammar / Know-how").map(written),
   speaking:contexts.filter(c=>c.oralValidationStatus==="needs_practice").map(c=>({correctionId:c.correctionId,lessonId:c.lessonId,target:c.target,...c.previousSpeakingAssessment.oral})),
-  suggestionsToVerify:latest?{speakingSessionId:latest.speakingSessionId||"",targets:latest.targetsToReview||[],grammar:latest.grammarToReview||[],status:"unverified_suggestions_not_learner_errors"}:null
+  suggestionsToVerify:latest?{speakingSessionId:latest.speakingSessionId||"",targets:latest.targetsToReview||[],grammar:latest.grammarToReview||[],observedCorrections:latest.speakingCorrections||[],status:"review_context_not_automatic_recurring_errors"}:null
  };
 }
 function speakingLiveCoverageLedger(data){
- const corrections=new Map(data.currentLessonCorrections.map(c=>[c.correctionId,c]));
- const items=data.coverage.items.map(item=>{
-  const correction=item.kind==="correction"?corrections.get(JSON.parse(item.coverageId)[2]):null;
-  const taskMode=item.kind==="vocabulary"?"vocabulary_production":item.kind==="grammar"?"grammar_application":correction?.round==="spelling"?"spelling_recall":"correction_transfer";
-  return {coverageId:item.coverageId,sourceVersion:item.sourceVersion,kind:item.kind,target:item.target,label:item.label,taskMode,state:"NOT_YET_PRACTICED"};
- });
+ const items=data.coverage.items.map(item=>({coverageId:item.coverageId,sourceVersion:item.sourceVersion,kind:item.kind,target:item.target,label:item.label,taskMode:item.taskMode,state:"NOT_YET_PRACTICED"}));
  return {total:items.length,practicedReliably:0,remaining:items.length,items};
 }
 
@@ -1560,7 +1602,7 @@ function speakingPracticeReportHTML(report){
 
 function renderSpeakingContextSummary(data=speakingHandoffData($("speakingLesson")?.value||"")){
  const box=$("speakingContextSummary");if(!box)return;
- box.innerHTML=data?`<p>會帶入本課教材、${data.currentLessonCorrections.length} 筆訂正與相關舊知識；複製時更新到最新已保存的內容。</p>`+speakingCoverageHTML(data):"請先選擇要練習的教材。";
+ box.innerHTML=data?`<p>Required Coverage 只包含本課 Vocabulary＋Grammar；${data.currentLessonCorrections.length} 筆既有訂正、拼字與舊知識會作為 Coach 的 Review Context，不會增加必做題數。</p>`+speakingCoverageHTML(data):"請先選擇要練習的教材。";
 }
 
 
@@ -1669,7 +1711,8 @@ function speakingFeedbackSummaryHTML(report){
  const list=(title,items)=>Array.isArray(items)&&items.length?`<div class="teaching-section"><h4>${esc(title)}</h4><ul>${items.map(s=>`<li>${esc(s)}</li>`).join("")}</ul></div>`:"";
  const suggestions=[...(report.targetsToReview||[]),...(report.grammarToReview||[])];
  const expressions=(report.betterExpressions||[]).filter(x=>x.original||x.better||x.reason);
- return list("這次的回饋",report.overallNotes)+list("GPT 回報的運用表現",report.targetsUsedWell)+
+ const corrections=(report.speakingCorrections||[]).filter(x=>x.original&&x.better&&x.reason);
+ return (corrections.length?`<div class="teaching-section"><h4>Corrections from this session</h4>${corrections.map(x=>`<div class="item"><div class="tiny">My sentence</div><p>${esc(x.original)}</p><div class="tiny">Better</div><p>${esc(x.better)}</p><div class="tiny">Why</div><p>${esc(x.reason)}</p><p class="tiny">${x.learnerRetried?`已重新作答${x.retryUtterance?`：${esc(x.retryUtterance)}`:""}`:"尚未重新作答"}</p></div>`).join("")}</div>`:"")+list("這次的回饋",report.overallNotes)+list("GPT 回報的運用表現",report.targetsUsedWell)+
   (suggestions.length?`<div class="teaching-section"><h4>下次練習建議</h4><p>${suggestions.map(esc).join(" · ")}</p><p class="tiny">建議會帶入下次口說；只有可對應的書面檢查或可靠口說驗收會新增 Review 紀錄。</p></div>`:"")+
   (expressions.length?`<div class="teaching-section"><h4>表達建議</h4>${expressions.map(x=>`<div class="item"><div class="tiny">GPT 回報的句子（近似或不確定內容依回報註記）</div><p>${esc(x.original||"")}</p><div class="tiny">更好的說法</div><p>${esc(x.better||"")}</p><p>${esc(x.reason||"")}</p></div>`).join("")}</div>`:"")+
   list("GPT 回報的發音觀察",report.pronunciationNotes);
@@ -2101,8 +2144,6 @@ $("correctionToSpeaking").onclick=()=>{
  setInterval(syncPoll,2000);
 })();
 </script></body></html>
-
-
 
 
 

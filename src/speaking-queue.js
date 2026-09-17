@@ -1,4 +1,4 @@
-/* Shared, deterministic V2.24 coverage rules. No DOM, storage, network, or model calls. */
+/* Shared, deterministic V2.25 coverage rules. No DOM, storage, network, or model calls. */
 (function (root) {
   'use strict';
   const PHASES = ['warmup', 'lesson_application', 'knowledge_integration', 'final_challenge'];
@@ -12,39 +12,54 @@
     for (let i = 0; i < s.length; i++) { a = Math.imul(a ^ s.charCodeAt(i), 16777619); b = Math.imul(b, 33) ^ s.charCodeAt(i); }
     return (a >>> 0).toString(16).padStart(8, '0') + (b >>> 0).toString(16).padStart(8, '0');
   }
-  function isQueueReport(raw) { const m = /^(\d+)\.(\d+)(?:\.(\d+))?$/.exec(text(raw?.schemaVersion)); return !!m && (+m[1] > 2 || (+m[1] === 2 && +m[2] >= 24)); }
-  function inventory(lesson, corrections = []) {
+  function parsedVersion(raw) { const m = /^(\d+)\.(\d+)(?:\.(\d+))?$/.exec(text(raw)); return m ? [+m[1], +m[2], +(m[3] || 0)] : null; }
+  function atLeast(raw, major, minor) { const v = parsedVersion(raw); return !!v && (v[0] > major || (v[0] === major && v[1] >= minor)); }
+  function isQueueReport(raw) { return atLeast(raw?.schemaVersion, 2, 24); }
+  function isSimplifiedReport(raw) { return atLeast(raw?.schemaVersion, 2, 25); }
+  function inventory(lesson, corrections = [], options = {}) {
+    const schemaVersion = typeof options === 'string' ? options : options.schemaVersion || '2.25.0';
+    const legacy = !atLeast(schemaVersion, 2, 25);
     const c = lesson.curriculum || {}, items = new Map();
     function add(kind, key, target, label, taskMode, source, extra = {}) {
       if (!text(key).trim()) return;
       const coverageId = JSON.stringify([lesson.id, kind, key]);
       items.set(coverageId, { coverageId, sourceVersion: version({ policy: '2.24.0', taskMode, source }), lessonId: lesson.id, kind, target, label, taskMode, ...extra });
     }
-    [...(c.mainVocabulary || []), ...(c.extendedVocabulary || [])].filter(x => !x.excludeFromPractice).forEach(x => add('vocabulary', x.term, x.term, x.term + ' · vocabulary', 'vocabulary_production', { term: x.term, meaning: x.meaning || '', partOfSpeech: x.partOfSpeech || x.pos || '' }));
+    [...(c.mainVocabulary || []), ...(c.extendedVocabulary || [])].filter(x => !x.excludeFromPractice).forEach(x => add('vocabulary', x.term, x.term, x.term, 'vocabulary_production', { term: x.term, meaning: x.meaning || '', partOfSpeech: x.partOfSpeech || x.pos || '' }));
     (c.grammar || []).filter(x => !x.excludeFromPractice).forEach(x => {
       const rule = typeof x === 'string' ? x : x.rule || x.title || x.name || '';
       const capitalization = /capital|大寫|小寫/i.test(rule);
       const grammarTask = !capitalization ? 'rule_application' : /誰的|所有格|possessive/i.test(rule) ? 'possessive_title' : /代替|replac|instead of/i.test(rule) ? 'title_replacing_name' : /名字|姓名|name/i.test(rule) ? 'title_with_name' : 'capitalization_decision';
-      add('grammar', rule, rule, rule, 'grammar_application', x, { evidenceType: capitalization ? 'capitalization_decision' : 'rule_application', grammarTask, grammarSource: x });
+      const expectedAnswer = grammarTask === 'possessive_title' ? 'lowercase' : capitalization ? 'capital' : null;
+      add('grammar', rule, rule, rule, 'grammar_application', x, { evidenceType: capitalization ? 'capitalization_decision' : 'rule_application', grammarTask, expectedAnswer, grammarSource: x });
     });
-    corrections.filter(x => x.lessonId === lesson.id).forEach(x => add('correction', x.correctionId, x.target, x.target + ' · ' + (x.round || x.component) + ' 訂正', x.round === 'spelling' ? 'spelling_recall' : 'correction_transfer', { prompt: x.prompt, answerStatus: x.answerStatus, originalAnswer: x.originalAnswer, gptSuggestedAnswer: x.gptSuggestedAnswer, learnerCorrection: x.learnerCorrection, round: x.round, component: x.component }, { correctionId: x.correctionId, component: x.component, sourcePrompt: x.prompt }));
+    if (legacy) corrections.filter(x => x.lessonId === lesson.id).forEach(x => add('correction', x.correctionId, x.target, x.target + ' · ' + (x.round || x.component) + ' 訂正', x.round === 'spelling' ? 'spelling_recall' : 'correction_transfer', { prompt: x.prompt, answerStatus: x.answerStatus, originalAnswer: x.originalAnswer, gptSuggestedAnswer: x.gptSuggestedAnswer, learnerCorrection: x.learnerCorrection, round: x.round, component: x.component }, { correctionId: x.correctionId, component: x.component, sourcePrompt: x.prompt }));
     return [...items.values()];
   }
+  const practiced = item => ['PRACTICED', 'PRACTICED_RELIABLY'].includes(item?.state);
   function summarize(s) {
-    s.completedCoverage = s.queue.filter(x => x.state === 'PRACTICED_RELIABLY');
-    s.remainingCoverage = s.queue.filter(x => x.state !== 'PRACTICED_RELIABLY');
-    s.sessionCoverage = { total: s.queue.length, practiced: s.completedCoverage.length, remaining: s.remainingCoverage.length, remainingIds: s.remainingCoverage.map(x => x.coverageId) };
+    s.completedCoverage = s.queue.filter(practiced);
+    s.remainingCoverage = s.queue.filter(x => !practiced(x));
+    const byKind = {};
+    for (const kind of ['vocabulary', 'grammar']) {
+      const rows = s.queue.filter(x => x.kind === kind), done = rows.filter(practiced).length;
+      byKind[kind] = { total: rows.length, practiced: done, remaining: rows.length - done };
+    }
+    s.sessionCoverage = { total: s.queue.length, practiced: s.completedCoverage.length, remaining: s.remainingCoverage.length, remainingIds: s.remainingCoverage.map(x => x.coverageId), byKind };
     return s;
   }
-  function reconcile(previous, items, identity = {}) {
-    const s = previous ? clone(previous) : { ...identity, schemaVersion: '2.24.0', attempts: [], phaseProgress: PHASES.map(phaseId => ({ phaseId, status: 'not_started', notes: '' })), finalChallengeStatus: null, completed: false, osVerifiedCompleted: false };
+  function reconcile(previous, items, identity = {}, schemaVersion = '2.25.0') {
+    const s = previous ? clone(previous) : { ...identity, schemaVersion, attempts: [], phaseProgress: PHASES.map(phaseId => ({ phaseId, status: 'not_started', notes: '' })), finalChallengeStatus: null, completed: false, osVerifiedCompleted: false };
     const old = new Map((s.queue || []).map(x => [x.coverageId, x]));
-    const changed = previous && stable((s.queue || []).map(x => [x.coverageId, x.sourceVersion])) !== stable(items.map(x => [x.coverageId, x.sourceVersion]));
+    const newIds = new Set(items.map(x => x.coverageId));
+    const requiredChanged = !!previous && (items.some(x => !old.has(x.coverageId) || old.get(x.coverageId).sourceVersion !== x.sourceVersion) || (s.queue || []).some(x => ['vocabulary', 'grammar'].includes(x.kind) && !newIds.has(x.coverageId)));
     s.queue = items.map(item => {
       const prior = old.get(item.coverageId);
-      return prior?.sourceVersion === item.sourceVersion ? { ...prior, ...item } : { ...item, state: 'NOT_YET_PRACTICED', remainingReason: 'not_asked', validationNote: prior ? '教材或訂正已更新，舊證據不適用。' : '' };
+      if (prior?.sourceVersion === item.sourceVersion) return { ...prior, ...item, state: practiced(prior) ? 'PRACTICED' : 'NOT_YET_PRACTICED' };
+      return { ...item, state: 'NOT_YET_PRACTICED', remainingReason: 'not_asked', validationNote: prior ? '教材已更新，舊證據不適用。' : '' };
     });
-    if (changed) {
+    s.schemaVersion = schemaVersion;
+    if (requiredChanged) {
       s.completed = s.osVerifiedCompleted = false; s.finalChallengeStatus = null;
       s.phaseProgress = s.phaseProgress.map(p => p.phaseId === 'final_challenge' ? { ...p, status: 'not_started', notes: '教材更新後需重新完成 Final Challenge。' } : p);
       s.activeAttempt = null;
@@ -56,6 +71,11 @@
     const u = words(utterance).join(' '), t = words(target).join(' ');
     if (!t) return false;
     return (' ' + u + ' ').includes(' ' + t + ' ') || (' ' + u + ' ').includes(' ' + t + 's ') || (' ' + u + ' ').includes(' ' + t + "'s ");
+  }
+  function capitalizationChoice(value) {
+    const v = text(value).toLowerCase();
+    const lower = /\blower(?:case)?\b|小寫/.test(v), capital = /\b(?:capital|uppercase|upper-case)\b|大寫/.test(v);
+    return lower === capital ? null : lower ? 'lowercase' : 'capital';
   }
   function assess(item, e) {
     const fail = (remainingReason, validationNote) => ({ ok: false, remainingReason, validationNote });
@@ -71,7 +91,8 @@
     if (!Number.isSafeInteger(e.sequence) || e.sequence < 1) return fail('wrong_task_mode', '缺少本次實際提問順序。');
     if (e.taskMode === 'vocabulary_production' || (e.taskMode === 'correction_transfer' && item.component === 'Vocabulary')) {
       if (!containsTarget(e.learnerUtterance, item.target)) return fail('coach_only_target', 'Learner 回答中沒有實際產出目標字。');
-      if (words(e.learnerUtterance).length < 3 || e.newContext !== true) return fail('wrong_task_mode', '需要新情境中的句子，單獨唸字不算運用。');
+      if (e.taskMode === 'correction_transfer' && e.newContext !== true) return fail('wrong_task_mode', '舊版訂正 Coverage 需要新情境。');
+      return { ok: true, productionQuality: ['acceptable', 'needs_review'].includes(e.productionQuality) ? e.productionQuality : 'not_assessed', needsReview: e.productionQuality === 'needs_review' };
     }
     if (e.taskMode === 'spelling_recall') {
       if (!/spell|letter|拼|字母/i.test(e.newPrompt) || !containsTarget(e.newPrompt,item.target)) return fail('wrong_task_mode', '沒有針對這個字的獨立拼字提問。');
@@ -79,21 +100,40 @@
       if (e.utteranceReliability !== 'confirmed' || !/^[a-z](?:[\s,.-]+[a-z])+$/i.test(letters)) return fail('unreliable_transcript', '需確認分開的字母序列，不能用整個單字代替。');
       const spoken = text(e.learnerUtterance).match(/\b[a-z](?:[\s,.-]+[a-z]){1,}\b/gi) || [];
       if (!spoken.some(s => s.replace(/[^a-z]/gi, '').toLowerCase() === letters.replace(/[^a-z]/gi, '').toLowerCase())) return fail('wrong_task_mode', '字母序列沒有出現在實際回答中。');
-      // A reliable but misspelled attempt counts as practice, never as mastery.
+      return { ok: true };
     }
     if (e.taskMode === 'grammar_application') {
       if (e.grammarRuleId !== item.coverageId) return fail('wrong_task_mode', '未對應這一條文法。');
       if (item.evidenceType === 'capitalization_decision') {
-        if (!/capital|lowercase|upper.?case|大寫|小寫/i.test(e.newPrompt) || !/capital|lowercase|upper.?case|大寫|小寫/i.test(e.learnerUtterance)) return fail('wrong_task_mode', '大／小寫要有口頭選擇，不能只看自動轉錄的字形。');
+        const choice = capitalizationChoice(e.learnerUtterance);
+        if (!/capital|lowercase|upper.?case|大寫|小寫/i.test(e.newPrompt) || !choice) return fail('no_learner_response', '需要 Learner 實際回答大寫或小寫；Okay／Yeah 不算答案。');
         if(e.grammarTask !== item.grammarTask || !text(e.caseExample).trim() || !e.newPrompt.toLowerCase().includes(e.caseExample.toLowerCase())) return fail('wrong_task_mode','需記錄這條規則實際提問的例子與 grammarTask。');
         const title='(?:aunt|uncle|cousin|mom|mum|mother|dad|father|son|daughter|sister|brother|grandma|grandpa|grandmother|grandfather|doctor|professor|captain|president|queen|king|judge)';
-        if(item.grammarTask==='possessive_title' && !new RegExp('\\b(?:my|your|his|her|our|their|its|[a-z]+[’\u0027]s)\\s+'+title+'\\b','i').test(e.caseExample)) return fail('wrong_task_mode','這項需要所有格＋稱謂的例子。');
+        if(item.grammarTask==='possessive_title' && !new RegExp('\\b(?:my|your|his|her|our|their|its|[a-z]+[’\\u0027]s)\\s+'+title+'\\b','i').test(e.caseExample)) return fail('wrong_task_mode','這項需要所有格＋稱謂的例子。');
         if(item.grammarTask==='title_with_name' && !new RegExp('\\b'+title+'\\s+[a-z]+\\b','i').test(e.caseExample)) return fail('wrong_task_mode','這項需要稱謂＋名字的例子。');
         if(item.grammarTask==='title_replacing_name' && (!new RegExp('\\b'+title+'\\b','i').test(e.caseExample) || new RegExp('\\b(?:my|your|his|her|our|their)\\s+'+title,'i').test(e.caseExample))) return fail('wrong_task_mode','這項需要稱謂代替人名的例子。');
-      } else if (e.newContext !== true || !text(e.ruleApplication).trim()) return fail('wrong_task_mode', '缺少這條規則的新情境應用說明。');
+        const accuracy = choice === item.expectedAnswer ? 'correct' : 'incorrect';
+        return { ok: true, accuracy, needsReview: accuracy === 'incorrect', answerValue: choice };
+      }
+      if (e.newContext !== true || !text(e.ruleApplication).trim()) return fail('wrong_task_mode', '缺少這條規則的新情境應用說明。');
+      const accuracy = ['correct', 'incorrect'].includes(e.accuracy) ? e.accuracy : 'not_assessed';
+      return { ok: true, accuracy, needsReview: accuracy === 'incorrect' };
     }
     if (e.taskMode === 'correction_transfer' && (e.newContext !== true || e.correctionId !== item.correctionId || !text(e.transferFocus).trim())) return fail('wrong_task_mode', '需對應這筆訂正，在新情境測試原問題。');
     return { ok: true };
+  }
+  function normalizeSpeakingCorrections(raw, queue) {
+    if (!Array.isArray(raw)) throw new Error('V2.25 Report 需包含 speakingCorrections 陣列。');
+    return raw.map((c, i) => {
+      if (!c || typeof c !== 'object') throw new Error('speakingCorrections[' + i + '] 格式不正確。');
+      const original = text(c.original).trim(), better = text(c.better).trim(), reason = text(c.reason).trim();
+      if (!original || !better || !reason || typeof c.learnerRetried !== 'boolean') throw new Error('每筆 speaking correction 需有 original、better、reason 與 learnerRetried。');
+      const retryUtterance = text(c.retryUtterance).trim(), target = text(c.target).trim();
+      if (c.learnerRetried && !retryUtterance) throw new Error('learnerRetried=true 時需保留 retryUtterance。');
+      const coverageId = text(c.coverageId).trim();
+      if (coverageId && !queue.some(x => x.coverageId === coverageId)) throw new Error('speaking correction 的 coverageId 無法對應本課。');
+      return { ...(target ? { target } : {}), ...(coverageId ? { coverageId } : {}), original, better, reason, learnerRetried: c.learnerRetried, ...(retryUtterance ? { retryUtterance } : {}) };
+    });
   }
   function applyReport(previous, raw) {
     const s = clone(previous);
@@ -104,18 +144,21 @@
       return { state: s, report: oldAttempt.report, duplicate: true };
     }
     if (!s.activeAttempt || s.activeAttempt.id !== raw.continuationAttemptId) throw new Error('找不到這次 attempt，請先由網站準備／續練口說內容。');
+    const attemptSimplified = atLeast(s.activeAttempt.schemaVersion || '2.24.0', 2, 25);
+    if (attemptSimplified !== isSimplifiedReport(raw)) throw new Error('Report schemaVersion 與這次口說內容不符，請使用同一份 Brief 產生回報。');
     if (!Array.isArray(raw.coverageChecks) || !Array.isArray(raw.phaseProgress)) throw new Error('Report 需包含 coverageChecks 與 phaseProgress 陣列。');
+    const speakingCorrections = isSimplifiedReport(raw) ? normalizeSpeakingCorrections(raw.speakingCorrections, s.queue) : Array.isArray(raw.speakingCorrections) ? normalizeSpeakingCorrections(raw.speakingCorrections, s.queue) : [];
     const allowed = new Map(s.activeAttempt.items.map(x => [x.coverageId, x.sourceVersion]));
     const warnings = [], checks = [], seen = new Set();
     for (const e of raw.coverageChecks) {
       const item = s.queue.find(x => x.coverageId === e?.coverageId);
       if (!item || allowed.get(item.coverageId) !== e.sourceVersion) { warnings.push('忽略未知、已完成或舊版本 Coverage：' + text(e?.coverageId)); continue; }
-      if (seen.has(item.coverageId)) { warnings.push('同項有多筆嘗試；保留已取得的有效證據。'); }
+      if (seen.has(item.coverageId)) warnings.push('同項有多筆嘗試；保留已取得的有效證據。');
       seen.add(item.coverageId);
       const result = assess(item, e);
       checks.push({ ...clone(e), ...result, status: result.ok ? 'practiced' : 'not_tested', label: item.label, target: item.target, kind: item.kind, lessonId: item.lessonId });
-      if (result.ok) { item.state = 'PRACTICED_RELIABLY'; item.evidence = { ...clone(e), attemptId: raw.continuationAttemptId }; delete item.remainingReason; delete item.validationNote; }
-      else if (item.state !== 'PRACTICED_RELIABLY') Object.assign(item, result);
+      if (result.ok) { item.state = 'PRACTICED'; item.evidence = { ...clone(e), ...result, attemptId: raw.continuationAttemptId }; delete item.remainingReason; delete item.validationNote; }
+      else if (!practiced(item)) Object.assign(item, result);
     }
     summarize(s);
     const rank = { not_started: 0, partial: 1, completed: 2 };
@@ -124,29 +167,34 @@
       if (p && rank[p.status] !== undefined && text(p.notes).trim() && rank[p.status] > rank[phase.status]) Object.assign(phase, { status: p.status, notes: p.notes });
     }
     const f = raw.finalChallenge || {};
-    const currentEvidence = s.completedCoverage.filter(x => x.evidence.attemptId === raw.continuationAttemptId);
+    const currentEvidence = s.completedCoverage.filter(x => x.evidence?.attemptId === raw.continuationAttemptId);
     const afterQueue = s.queue.length > 0 && !s.remainingCoverage.length && Number.isSafeInteger(f.sequence) && f.sequence > 0 && currentEvidence.every(x => x.evidence.sequence < f.sequence);
-    const finalOK = afterQueue && f.learnerFinished === true && f.independentProduction === true && f.coachSuppliedAnswer === false && f.feedbackGiven === true && text(f.newPrompt).trim() && text(f.learnerUtterance).trim() && ['confirmed', 'likely'].includes(f.utteranceReliability) && f.transcriptionIssue === false;
+    const reliableFinal = text(f.newPrompt).trim() && text(f.learnerUtterance).trim() && ['confirmed', 'likely'].includes(f.utteranceReliability) && f.transcriptionIssue === false;
+    const finalOK = isSimplifiedReport(raw) ? afterQueue && f.learnerFinished === true && f.feedbackGiven === true && reliableFinal : afterQueue && f.learnerFinished === true && f.independentProduction === true && f.coachSuppliedAnswer === false && f.feedbackGiven === true && reliableFinal;
     if (finalOK) s.finalChallengeStatus = { ...clone(f), verified: true, attemptId: raw.continuationAttemptId };
     const finalPhase = s.phaseProgress.find(x => x.phaseId === 'final_challenge');
-    if (!s.finalChallengeStatus?.verified && finalPhase.status === 'completed') { finalPhase.status = 'partial'; warnings.push('Final Challenge 缺少獨立完整回答、回饋，或發生在 Coverage 補齊之前。'); }
+    if (finalOK && finalPhase) finalPhase.status = 'completed';
+    if (!s.finalChallengeStatus?.verified && finalPhase?.status === 'completed') { finalPhase.status = 'partial'; warnings.push('Final Challenge 缺少完整回答、回饋，或發生在 Required Coverage 補齊之前。'); }
     let endReason = raw.endReason;
     const stop = raw.stopContext || {};
     if (endReason === 'learner_agreed_stop' && (!text(stop.externalReason).trim() || /time limit|long conversation|deadline|minutes elapsed|時間到|聊太久|時間上限/i.test(stop.externalReason) || !text(stop.learnerWords).trim() || stop.coachInitiatedWrapUp !== false || /^(yes|yeah|okay|ok|thanks)[.! ]*$/i.test(stop.learnerWords.trim()))) { endReason = 'incomplete'; warnings.push('一般 Yes／Okay、時間壓力或 Coach 誘導收尾，不是有效停止同意。'); }
     if (endReason === 'learner_requested_stop' && !text(stop.learnerWords).trim()) { endReason = 'incomplete'; warnings.push('缺少 Learner 明確要求停止的原話。'); }
     s.gptClaimedCompleted = raw.completed === true;
-    s.completed = s.osVerifiedCompleted = !!(s.queue.length && !s.remainingCoverage.length && s.phaseProgress.every(p => p.status === 'completed') && s.finalChallengeStatus?.verified);
+    const legacyPhasesComplete = s.phaseProgress.every(p => p.status === 'completed');
+    s.completed = s.osVerifiedCompleted = !!(s.queue.length && !s.remainingCoverage.length && s.finalChallengeStatus?.verified && (isSimplifiedReport(raw) || legacyPhasesComplete));
     s.endReason = s.completed ? 'completed' : ['learner_requested_stop', 'learner_agreed_stop', 'technical_interruption'].includes(endReason) ? endReason : 'incomplete';
     if (s.gptClaimedCompleted && !s.completed) warnings.push('GPT 宣稱完成，但 English OS 驗證未完成；已保存有效證據。');
     const minutes = typeof raw.speakingMinutes === 'number' && Number.isFinite(raw.speakingMinutes) && raw.speakingMinutes >= 0 && ['measured', 'estimated'].includes(raw.timeBasis) ? raw.speakingMinutes : null;
-    const report = { ...clone(raw), schemaVersion: raw.schemaVersion, completed: s.completed, gptClaimedCompleted: s.gptClaimedCompleted, osVerifiedCompleted: s.completed, endReason: s.endReason, phaseProgress: clone(s.phaseProgress), finalChallenge: clone(s.finalChallengeStatus || {}), coverageChecks: checks, sessionCoverage: clone(s.sessionCoverage), validationWarnings: warnings, speakingMinutes: minutes, timeBasis: minutes === null ? 'not_recorded' : raw.timeBasis, serverVerified: true };
+    const report = { ...clone(raw), schemaVersion: raw.schemaVersion, completed: s.completed, gptClaimedCompleted: s.gptClaimedCompleted, osVerifiedCompleted: s.completed, endReason: s.endReason, phaseProgress: clone(s.phaseProgress), finalChallenge: clone(s.finalChallengeStatus || {}), coverageChecks: checks, speakingCorrections, sessionCoverage: clone(s.sessionCoverage), validationWarnings: warnings, speakingMinutes: minutes, timeBasis: minutes === null ? 'not_recorded' : raw.timeBasis, serverVerified: true };
     s.attempts.push({ id: raw.continuationAttemptId, rawReport: clone(raw), report });
     s.activeAttempt = null;
     return { state: summarize(s), report, duplicate: false };
   }
-  function prepare(s, attemptId) {
+  function prepare(s, attemptId, schemaVersion = '2.25.0') {
     const next = clone(s);
-    if (!next.activeAttempt) next.activeAttempt = { id: attemptId, items: next.remainingCoverage.map(x => ({ coverageId: x.coverageId, sourceVersion: x.sourceVersion })) };
+    const currentVersion = next.activeAttempt?.schemaVersion || (next.activeAttempt ? '2.24.0' : null);
+    if (next.activeAttempt && atLeast(currentVersion, 2, 25) !== atLeast(schemaVersion, 2, 25)) next.activeAttempt = null;
+    if (!next.activeAttempt) next.activeAttempt = { id: attemptId, schemaVersion, items: next.remainingCoverage.map(x => ({ coverageId: x.coverageId, sourceVersion: x.sourceVersion })) };
     return next;
   }
   function publicState(s) {
@@ -154,5 +202,5 @@
     const { attempts, ...rest } = s;
     return { ...rest, attemptCount: attempts.length, reports: attempts.map(a => a.report) };
   }
-  root.EnglishSpeakingQueue = { PHASES, REASONS, stable, version, isQueueReport, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget };
+  root.EnglishSpeakingQueue = { PHASES, REASONS, stable, version, isQueueReport, isSimplifiedReport, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget, capitalizationChoice };
 })(globalThis);

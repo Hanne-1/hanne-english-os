@@ -10,24 +10,29 @@ export function createSpeakingService(store, makeId = () => crypto.randomUUID())
     for (let retry = 0; retry < 3; retry++) {
       const snapshot = await store.source();
       const context = sourceContext(snapshot, input.lessonId);
-      const items = Q.inventory(context.lesson, context.corrections);
+      const schemaVersion = input.action === 'report' ? (Q.isSimplifiedReport(input.report) ? '2.25.0' : '2.24.0') : (Q.isSimplifiedReport({schemaVersion:input.schemaVersion}) ? '2.25.0' : '2.24.0');
+      const items = Q.inventory(context.lesson, context.corrections, { schemaVersion });
       const fingerprint = Q.version(items);
       if (input.action === 'prepare' && input.sourceFingerprint !== fingerprint) throw new Error('雲端教材與本機尚未一致，請等 Cloud Sync 完成後再準備。');
       const row = input.action === 'report' ? await store.get(input.report?.speakingSessionId) : await store.latest(input.lessonId);
       if (row && row.lesson_id !== input.lessonId) throw new Error('Session 與教材不符。');
       if (input.action === 'report' && !row) throw new Error('找不到伺服器 Session。');
+      if (row && input.action !== 'report' && schemaVersion === '2.24.0' && Q.isSimplifiedReport({schemaVersion:row.state?.schemaVersion})) {
+        if (input.action === 'status') return { state: Q.publicState(row.state), sourceFingerprint: fingerprint };
+        throw new Error('Speaking 已升級為 V2.25.0，請重新載入網站後再準備口說內容。');
+      }
       if (!row && input.action === 'status') return { state: null, sourceFingerprint: fingerprint };
       const prior = row?.state || null;
-      let s = Q.reconcile(prior, items, { speakingSessionId: 'speak_' + makeId(), lessonId: context.lesson.id, lessonTitle: context.lesson.title });
+      let s = Q.reconcile(prior, items, { speakingSessionId: 'speak_' + makeId(), lessonId: context.lesson.id, lessonTitle: context.lesson.title }, schemaVersion);
       let report = null, duplicate = false, creating = !row;
       if (input.action === 'prepare') {
         if (!items.length) throw new Error('本課目前沒有可練習項目。');
         if (input.newSession) {
           if (prior && !s.completed) throw new Error('目前這一輪尚未完成，請接續剩餘項目。');
-          s = Q.reconcile(null, items, { speakingSessionId: 'speak_' + makeId(), lessonId: context.lesson.id, lessonTitle: context.lesson.title });
+          s = Q.reconcile(null, items, { speakingSessionId: 'speak_' + makeId(), lessonId: context.lesson.id, lessonTitle: context.lesson.title }, schemaVersion);
           creating = true;
         } else if (s.completed) return { state: Q.publicState(s), sourceFingerprint: fingerprint };
-        s = Q.prepare(s, 'attempt_' + makeId());
+        s = Q.prepare(s, 'attempt_' + makeId(), schemaVersion);
       }
       if (input.action === 'report') {
         // Source edits invalidate stale evidence, but submitted attempts remain attributable.
@@ -54,8 +59,8 @@ function normalizeFeedback(raw, contexts, checks) {
     seen.add(c.correctionId);
     let writtenStatus = source.learnerCorrection !== null && text(c.reason).trim() && ['correct','needs_revision'].includes(c.writtenStatus) ? c.writtenStatus : 'not_checked';
     if (writtenStatus === 'needs_revision' && !text(c.suggestedCorrection).trim()) writtenStatus = 'not_checked';
-    const evidence = checks.find(e => e.status === 'practiced' && e.correctionId === c.correctionId && e.newPrompt === c.newPrompt && e.learnerUtterance === c.learnerUtterance);
-    let oralTransfer = evidence && text(c.reason).trim() && ['passed','needs_practice'].includes(c.oralTransfer) ? c.oralTransfer : 'not_tested';
+    const evidence = checks.find(e => e.status === 'practiced' && (e.correctionId === c.correctionId || (source.round !== 'spelling' && e.target === source.target)) && e.newPrompt === c.newPrompt && e.learnerUtterance === c.learnerUtterance);
+    let oralTransfer = source.round !== 'spelling' && evidence && text(c.reason).trim() && ['passed','needs_practice'].includes(c.oralTransfer) ? c.oralTransfer : 'not_tested';
     if (oralTransfer === 'passed' && evidence.independentProduction !== true) oralTransfer = 'needs_practice';
     return [{ correctionId: source.correctionId, sessionId: source.sessionId, itemId: source.itemId, lessonId: source.lessonId, component: source.component, target: source.target, contextSnapshot: {originalAnswer:source.originalAnswer,gptSuggestedAnswer:source.gptSuggestedAnswer,learnerCorrection:source.learnerCorrection}, writtenStatus, oralTransfer, newPrompt:text(c.newPrompt), learnerUtterance:text(c.learnerUtterance), utteranceReliability:evidence?.utteranceReliability || 'not_applicable', transcriptionIssue:evidence?.transcriptionIssue ?? false, reason:text(c.reason), suggestedCorrection:text(c.suggestedCorrection) }];
   });

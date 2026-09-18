@@ -10,7 +10,8 @@ export function createSpeakingService(store, makeId = () => crypto.randomUUID())
     for (let retry = 0; retry < 3; retry++) {
       const snapshot = await store.source();
       const context = sourceContext(snapshot, input.lessonId);
-      const schemaVersion = input.action === 'report' ? (Q.isSimplifiedReport(input.report) ? '2.25.0' : '2.24.0') : (Q.isSimplifiedReport({schemaVersion:input.schemaVersion}) ? '2.25.0' : '2.24.0');
+      const requestedVersion = input.action === 'report' ? text(input.report?.schemaVersion) : text(input.schemaVersion);
+      const schemaVersion = Q.isSimplifiedReport({ schemaVersion: requestedVersion }) ? requestedVersion : '2.24.0';
       const items = Q.inventory(context.lesson, context.corrections, { schemaVersion });
       const fingerprint = Q.version(items);
       if (input.action === 'prepare' && input.sourceFingerprint !== fingerprint) throw new Error('雲端教材與本機尚未一致，請等 Cloud Sync 完成後再準備。');
@@ -19,7 +20,7 @@ export function createSpeakingService(store, makeId = () => crypto.randomUUID())
       if (input.action === 'report' && !row) throw new Error('找不到伺服器 Session。');
       if (row && input.action !== 'report' && schemaVersion === '2.24.0' && Q.isSimplifiedReport({schemaVersion:row.state?.schemaVersion})) {
         if (input.action === 'status') return { state: Q.publicState(row.state), sourceFingerprint: fingerprint };
-        throw new Error('Speaking 已升級為 V2.25.0，請重新載入網站後再準備口說內容。');
+        throw new Error('Speaking 已升級為 V2.25.1，請重新載入網站後再準備口說內容。');
       }
       if (!row && input.action === 'status') return { state: null, sourceFingerprint: fingerprint };
       const prior = row?.state || null;

@@ -1,4 +1,4 @@
-// V2.25 UI. The server owns sessions; local cache only renders the last response.
+// V2.25.1 UI. The server owns sessions; local cache only renders the last response.
 var speakingQueueCache = {}, speakingQueueBusy = false, speakingQueueGeneration = 0;
 const pendingSpeakingText = localStorage.getItem('hanne_speaking_pending_report_v224');
 if(pendingSpeakingText && document.getElementById('speakingReport')) document.getElementById('speakingReport').value=pendingSpeakingText;
@@ -50,7 +50,7 @@ function persistVerifiedSpeakingReport(report) {
 async function refreshSpeakingQueue() {
   const id = $('speakingLesson')?.value, generation = speakingQueueGeneration;
   renderSpeakingQueuePanel(); if (!id || speakingQueueBusy) return;
-  try { const result = await speakingQueueRequest({action:'status',lessonId:id,schemaVersion:'2.25.0'}); if(generation !== speakingQueueGeneration || speakingQueueBusy)return; acceptSpeakingQueueResult(result,id); if ($('speakingLesson').value === id) renderSpeakingChecks(); }
+  try { const result = await speakingQueueRequest({action:'status',lessonId:id,schemaVersion:'2.25.1'}); if(generation !== speakingQueueGeneration || speakingQueueBusy)return; acceptSpeakingQueueResult(result,id); if ($('speakingLesson').value === id) renderSpeakingChecks(); }
   catch (_) { /* Last confirmed cache remains visible. Preparation/import fails closed. */ }
 }
 async function prepareSpeakingQueue(newSession = false, open = false) {
@@ -60,8 +60,8 @@ async function prepareSpeakingQueue(newSession = false, open = false) {
   try {
     await cloudSave();
     const data = speakingHandoffData(id);
-    const inventory = EnglishSpeakingQueue.inventory(getLesson(id), data.currentLessonCorrections, {schemaVersion:'2.25.0'});
-    const result = await speakingQueueRequest({ action:'prepare', lessonId:id, newSession, schemaVersion:'2.25.0', sourceFingerprint:EnglishSpeakingQueue.version(inventory) });
+    const inventory = EnglishSpeakingQueue.inventory(getLesson(id), data.currentLessonCorrections, {schemaVersion:'2.25.1'});
+    const result = await speakingQueueRequest({ action:'prepare', lessonId:id, newSession, schemaVersion:'2.25.1', sourceFingerprint:EnglishSpeakingQueue.version(inventory) });
     acceptSpeakingQueueResult(result,id);
     if (result.state.completed) { msg('這一輪已完成；按「完成後開始新一輪」可再次練習。'); return ''; }
     const text = formatSpeakingBrief(data, result.state.speakingSessionId, result.state);
@@ -99,8 +99,8 @@ function formatSpeakingBrief(data, id, s) {
   if (!s?.activeAttempt) throw new Error('請先由伺服器準備口說 Session。');
   const remaining = s.remainingCoverage;
   const compact = x => x ? {coverageId:x.coverageId,sourceVersion:x.sourceVersion,kind:x.kind,target:x.target,label:x.label,taskMode:x.taskMode,state:x.state,...(x.evidenceType?{evidenceType:x.evidenceType,grammarTask:x.grammarTask,expectedAnswer:x.expectedAnswer}:{}),...(x.remainingReason?{remainingReason:x.remainingReason}:{})} : null;
-  const schema = {type:'SPEAKING_REPORT',schemaVersion:'2.25.0',speakingSessionId:id,continuationAttemptId:s.activeAttempt.id,lessonId:data.lessonId,lessonTitle:data.lessonTitle,completed:false,endReason:'incomplete',stopContext:{externalReason:'',learnerWords:'',coachInitiatedWrapUp:false},speakingMinutes:null,timeBasis:'not_recorded',phaseProgress:s.phaseProgress.map(p=>({...p})),coverageChecks:[{coverageId:'COPY_EXACT_ID',sourceVersion:'COPY_EXACT_VERSION',taskMode:'vocabulary_production|grammar_application',phaseId:'lesson_application',sequence:1,status:'practiced|not_tested',newPrompt:'ACTUAL QUESTION',learnerUtterance:'ACTUAL RESPONSE',utteranceReliability:'confirmed|likely|uncertain',transcriptionIssue:false,learnerFinished:true,modelOnly:false,coachSuppliedAnswer:false,productionQuality:'acceptable|needs_review',grammarRuleId:'ONLY_FOR_GRAMMAR',grammarTask:'COPY_ITEM_GRAMMAR_TASK',caseExample:'EXACT_EXAMPLE_IN_QUESTION',accuracy:'correct|incorrect',needsReview:false,ruleApplication:'ONLY_FOR_GENERAL_GRAMMAR',notes:'ACTUAL EVIDENCE',remainingReason:'not_asked'}],speakingCorrections:[{target:'OPTIONAL_TARGET',coverageId:'OPTIONAL_REQUIRED_COVERAGE_ID',original:'LEARNER ACTUAL SENTENCE',better:'NATURAL CORRECTION',reason:'SHORT EXPLANATION',learnerRetried:true,retryUtterance:'LEARNER RETRY'}],finalChallenge:{sequence:null,newPrompt:'',learnerUtterance:'',utteranceReliability:'not_applicable',transcriptionIssue:false,learnerFinished:false,independentProduction:false,coachSuppliedAnswer:false,feedbackGiven:false},correctionChecks:[],targetsUsedWell:[],targetsToReview:[],grammarToReview:[],pronunciationNotes:[],betterExpressions:[],overallNotes:[]};
-  return `SPEAKING ${s.attemptCount ? 'CONTINUATION' : 'PRACTICE'} · V2.25.0
+  const schema = {type:'SPEAKING_REPORT',schemaVersion:'2.25.1',speakingSessionId:id,continuationAttemptId:s.activeAttempt.id,lessonId:data.lessonId,lessonTitle:data.lessonTitle,completed:false,endReason:'incomplete',stopContext:{externalReason:'',learnerWords:'',coachInitiatedWrapUp:false},speakingMinutes:null,timeBasis:'not_recorded',phaseProgress:s.phaseProgress.map(p=>({...p})),coverageChecks:[{coverageId:'COPY_EXACT_ID',sourceVersion:'COPY_EXACT_VERSION',taskMode:'vocabulary_production|grammar_application',phaseId:'warmup|lesson_application|knowledge_integration',sequence:1,status:'practiced|not_tested',newPrompt:'ACTUAL QUESTION',learnerUtterance:'ACTUAL RESPONSE',utteranceReliability:'confirmed|likely|uncertain',transcriptionIssue:false,learnerFinished:true,modelOnly:false,coachSuppliedAnswer:false,productionQuality:'acceptable|needs_review',grammarRuleId:'ONLY_FOR_GRAMMAR',grammarTask:'COPY_ITEM_GRAMMAR_TASK',caseExample:'EXACT_EXAMPLE_IN_QUESTION',accuracy:'correct|incorrect',needsReview:false,ruleApplication:'ONLY_FOR_GENERAL_GRAMMAR',notes:'ACTUAL EVIDENCE',remainingReason:'not_asked'}],speakingCorrections:[{target:'OPTIONAL_TARGET',coverageId:'OPTIONAL_REQUIRED_COVERAGE_ID',original:'LEARNER ACTUAL SENTENCE',better:'NATURAL CORRECTION',reason:'SHORT EXPLANATION',learnerRetried:true,retryUtterance:'LEARNER RETRY'}],finalChallenge:{sequence:null,newPrompt:'',learnerUtterance:'',utteranceReliability:'not_applicable',transcriptionIssue:false,learnerFinished:false,independentProduction:false,coachSuppliedAnswer:false,feedbackGiven:false},correctionChecks:[],targetsUsedWell:[],targetsToReview:[],grammarToReview:[],pronunciationNotes:[],betterExpressions:[],overallNotes:[]};
+  return `SPEAKING ${s.attemptCount ? 'CONTINUATION' : 'PRACTICE'} · V2.25.1
 SESSION IDENTITY
 speakingSessionId: ${id}
 continuationAttemptId: ${s.activeAttempt.id}
@@ -112,6 +112,22 @@ Required Coverage contains ONLY this lesson's Vocabulary and Grammar. Previous c
 Before Final Challenge, remainingCoverage MUST equal 0. Do not omit Required items. The learner never manages the syllabus; you maintain the queue.
 Do not ask to end because the conversation has been long. Do not say “Let's wrap up”, “That's all for today”, or “We'll practice the rest next time” unless the queue is empty AND four phases/Final Challenge are complete, OR the learner explicitly asks to stop. A technical interruption can save incomplete progress.
 Learner says “You missed something”, “We didn't practice everything”, “There's another word”: immediately audit ALL remaining Coverage and resume the first missing item. Do not ask her which word; she does not manage the syllabus.
+
+VOICE SESSION START RULE — HARD RULE
+Once this Speaking Brief has been loaded and the learner enters Voice mode, begin the Speaking Session immediately. Do NOT wait for another explicit command such as Start, Let's start, Yes, Okay, Ready, Go, Question?, or Let's practice.
+Do NOT ask what the learner would like to practice, what scenario she wants, how she wants to continue, whether she is ready, what direction to start with, or tell her to let you know when she is ready. The Brief already defines the lesson, Required Coverage, CURRENT REQUIRED ITEM, and learning priorities. The learner does not manage the syllabus.
+On the first Voice turn, immediately ask either one very short lesson-linked warm-up question and then move directly to CURRENT REQUIRED ITEM, or ask CURRENT REQUIRED ITEM itself when a separate warm-up adds little value. A warm-up has at most ONE main question, creates no new Coverage ID, does not become an extra test, and never delays Required Coverage.
+
+READINESS RESPONSE RULE
+Before the first real Speaking question, Yes, Yeah, Yep, Okay, Sure, Ready, Let's go, Let's start, Go ahead, Question?, I'm ready, Can you ask me a question?, and What's the question? all mean: begin now. They are NOT invitations for another readiness confirmation. Immediately ask the first lesson-linked question.
+Readiness acknowledgement is not Coverage evidence. After a Required task has been asked, Yes/Okay/Yeah still do not answer a Vocabulary or Grammar task. Re-ask the smallest necessary question, such as “Capital or lowercase?”.
+
+HARD RULE — NO READINESS LOOP
+Once Voice mode has started, never create a repeated readiness loop. One readiness signal is enough. Do not answer it with “I'm ready whenever you are”, “Let me know when you're ready”, “Whenever you're ready”, or “Just let me know”. The next Coach turn must contain an actual lesson question.
+
+TEXT → VOICE SESSION STATE
+BRIEF_LOADED → TEXT_READY → VOICE_ENTERED → SESSION_ACTIVE → FIRST_QUESTION_ASKED → SPEAKING_LOOP.
+In text mode immediately after this Brief is pasted, only acknowledge that the content is ready and ask the learner to enter Voice mode. Once Voice interaction begins, do not repeat the text-mode message and do not remain in WAITING_FOR_START_COMMAND. The first available Voice turn starts the lesson question without requiring learnerSaidStart=true.
 
 TODAY'S REQUIRED COVERAGE — SERVER-CONFIRMED STARTING STATE
 TOTAL REQUIRED COVERAGE: ${s.queue.length}
@@ -139,12 +155,13 @@ EVIDENCE / QUALITY SEPARATION
 - grammar_application: ask that exact rule (grammarRuleId=coverageId). The learner must actually answer. Okay/Yeah/silence/filler/unrelated words do not count. A reliable wrong capital/lowercase choice is PRACTICED with accuracy=incorrect and needsReview=true; teach it and invite Retry.
 - Title + Name, title replacing name, and possessive + title are separate tasks. Keep grammarTask and the exact caseExample from the question. Automatic transcript capitalization is never evidence.
 - Practiced is not Mastered. Incorrect is not Not Practiced. Coverage records whether a real attempt happened; speakingCorrections/accuracy record quality.
-- Report actual sequence numbers. Only lesson_application/knowledge_integration evidence fills Coverage. Final Challenge cannot retroactively fill a missed Required item.
+- Report actual sequence numbers. lesson_application/knowledge_integration evidence fills Coverage. A warm-up may also fill a Vocabulary item only when the learner naturally and reliably produces that exact target under every normal vocabulary_production evidence rule. Prompt-only targets, Coach-supplied answers, unfinished turns, and unreliable transcripts never count. Final Challenge cannot retroactively fill a missed Required item.
 
 VOICE PACING / TIME
 Time is recorded, never a limit. No countdown, 8–12 minute target, deadline or phase quota. 18/25+ minutes is fine. Actual minutes only, estimated clearly labeled; unknown=null/not_recorded. Record this attempt's time, not prior attempts again.
 Learner turn completion > silence duration. Pauses, um, I think, but, repetitions, word search and self-correction do not end a turn. Wait; if needed say “Take your time”, then only if still uncertain “Are you still thinking?”. Never finish learner sentences. Only take over when the meaning is complete or learner explicitly finishes. Progress reminders describe practiced/remaining items after her turn, never remaining time.
-If pasted in text mode, only say:「口說內容已準備好，請開啟這個 Project 的語音模式。」Do not simulate voice answers. In voice, English questions and natural transitions; Traditional Chinese for requested explanations, then return to English.
+TEXT MODE: If this Brief has just been pasted in text mode, only say:「口說內容已準備好，請開啟這個 Project 的語音模式。」Do not simulate voice answers.
+VOICE MODE: The Brief is already loaded. Immediately begin with the first short lesson-linked question under VOICE SESSION START RULE. Never repeat the text-mode message. Use English questions and natural transitions; use Traditional Chinese for requested explanations, then return to English.
 
 CLARIFICATION / CORRECTION
 ASK → WAIT → LEARNER FINISHES → CHECK TARGET PRODUCTION → CHECK IMPORTANT LANGUAGE ERRORS → CORRECT IF NEEDED → LEARNER RETRY → OPTIONAL FOLLOW-UP → NEXT TARGET.

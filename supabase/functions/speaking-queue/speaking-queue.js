@@ -1,4 +1,4 @@
-/* Shared, deterministic V2.25 coverage rules. No DOM, storage, network, or model calls. */
+/* Shared, deterministic V2.25.1 coverage rules. No DOM, storage, network, or model calls. */
 (function (root) {
   'use strict';
   const PHASES = ['warmup', 'lesson_application', 'knowledge_integration', 'final_challenge'];
@@ -17,7 +17,7 @@
   function isQueueReport(raw) { return atLeast(raw?.schemaVersion, 2, 24); }
   function isSimplifiedReport(raw) { return atLeast(raw?.schemaVersion, 2, 25); }
   function inventory(lesson, corrections = [], options = {}) {
-    const schemaVersion = typeof options === 'string' ? options : options.schemaVersion || '2.25.0';
+    const schemaVersion = typeof options === 'string' ? options : options.schemaVersion || '2.25.1';
     const legacy = !atLeast(schemaVersion, 2, 25);
     const c = lesson.curriculum || {}, items = new Map();
     function add(kind, key, target, label, taskMode, source, extra = {}) {
@@ -48,7 +48,7 @@
     s.sessionCoverage = { total: s.queue.length, practiced: s.completedCoverage.length, remaining: s.remainingCoverage.length, remainingIds: s.remainingCoverage.map(x => x.coverageId), byKind };
     return s;
   }
-  function reconcile(previous, items, identity = {}, schemaVersion = '2.25.0') {
+  function reconcile(previous, items, identity = {}, schemaVersion = '2.25.1') {
     const s = previous ? clone(previous) : { ...identity, schemaVersion, attempts: [], phaseProgress: PHASES.map(phaseId => ({ phaseId, status: 'not_started', notes: '' })), finalChallengeStatus: null, completed: false, osVerifiedCompleted: false };
     const old = new Map((s.queue || []).map(x => [x.coverageId, x]));
     const newIds = new Set(items.map(x => x.coverageId));
@@ -84,7 +84,8 @@
     if (!text(e.newPrompt).trim()) return fail('not_asked', '沒有實際題目。');
     if (!text(e.learnerUtterance).trim()) return fail('no_learner_response', '沒有實際回答。');
     if (!['confirmed', 'likely'].includes(e.utteranceReliability) || e.transcriptionIssue !== false) return fail('unreliable_transcript', '語音或轉錄尚未確認。');
-    if (e.taskMode !== item.taskMode || !['lesson_application', 'knowledge_integration'].includes(e.phaseId)) return fail('wrong_task_mode', '任務不符，或只在暖身／Final Challenge 出現。');
+    const evidencePhases = e.taskMode === 'vocabulary_production' ? ['warmup', 'lesson_application', 'knowledge_integration'] : ['lesson_application', 'knowledge_integration'];
+    if (e.taskMode !== item.taskMode || !evidencePhases.includes(e.phaseId)) return fail('wrong_task_mode', '任務或階段不符；只有可靠的 Vocabulary 自然產出可在暖身計入 Coverage，Final Challenge 不補漏題。');
     if (e.learnerFinished !== true) return fail('no_learner_response', 'Learner 尚未完成回答。');
     if (e.modelOnly !== false || e.coachSuppliedAnswer !== false) return fail('model_only', '只有示範、跟讀或 Coach 代答。');
     if (e.status !== 'practiced') return fail(REASONS.includes(e.remainingReason) ? e.remainingReason : 'no_learner_response', '尚未取得本項可靠練習證據。');
@@ -123,7 +124,7 @@
     return { ok: true };
   }
   function normalizeSpeakingCorrections(raw, queue) {
-    if (!Array.isArray(raw)) throw new Error('V2.25 Report 需包含 speakingCorrections 陣列。');
+    if (!Array.isArray(raw)) throw new Error('V2.25+ Report 需包含 speakingCorrections 陣列。');
     return raw.map((c, i) => {
       if (!c || typeof c !== 'object') throw new Error('speakingCorrections[' + i + '] 格式不正確。');
       const original = text(c.original).trim(), better = text(c.better).trim(), reason = text(c.reason).trim();
@@ -190,7 +191,7 @@
     s.activeAttempt = null;
     return { state: summarize(s), report, duplicate: false };
   }
-  function prepare(s, attemptId, schemaVersion = '2.25.0') {
+  function prepare(s, attemptId, schemaVersion = '2.25.1') {
     const next = clone(s);
     const currentVersion = next.activeAttempt?.schemaVersion || (next.activeAttempt ? '2.24.0' : null);
     if (next.activeAttempt && atLeast(currentVersion, 2, 25) !== atLeast(schemaVersion, 2, 25)) next.activeAttempt = null;

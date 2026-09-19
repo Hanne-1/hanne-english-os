@@ -1,7 +1,7 @@
 /* Shared, deterministic Speaking runtime rules. New sessions use one schema source. */
 (function (root) {
   'use strict';
-  const SPEAKING_SCHEMA_VERSION = '2.25.5';
+  const SPEAKING_SCHEMA_VERSION = '2.25.6';
   const PHASES = ['warmup', 'lesson_application', 'knowledge_integration', 'final_challenge'];
   const REASONS = ['not_asked', 'no_learner_response', 'unreliable_transcript', 'hearing_unresolved', 'target_not_produced', 'correction_unresolved', 'queue_order_violation', 'explicit_skip', 'wrong_task_mode', 'coach_only_target', 'model_only', 'session_stopped'];
   const ITEM_STATES = ['PENDING', 'ACTIVE', 'AWAITING_LEARNER', 'HEARING_UNRESOLVED', 'TARGET_UNRESOLVED', 'TASK_UNRESOLVED', 'CORRECTION_REQUIRED', 'AWAITING_RETRY', 'RESOLVED', 'RESOLVED_WITH_DECLINED_CORRECTION', 'EXPLICITLY_SKIPPED', 'SESSION_STOPPED'];
@@ -23,7 +23,8 @@
   function isCurrentItemReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 3)))); }
   function isRuntimeIntegrityReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 4)))); }
   function isVocabularyOnlyReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 5)))); }
-  function schemaClass(raw) { return !isSimplifiedReport(raw) ? 'legacy' : isVocabularyOnlyReport(raw) ? 'vocabulary_only' : isRuntimeIntegrityReport(raw) ? 'runtime_integrity' : isCurrentItemReport(raw) ? 'current_item_lock' : isExecutionGateReport(raw) ? 'execution_gates' : 'simplified'; }
+  function isVocabularyStabilityReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 6)))); }
+  function schemaClass(raw) { return !isSimplifiedReport(raw) ? 'legacy' : isVocabularyStabilityReport(raw) ? 'vocabulary_stability' : isVocabularyOnlyReport(raw) ? 'vocabulary_only' : isRuntimeIntegrityReport(raw) ? 'runtime_integrity' : isCurrentItemReport(raw) ? 'current_item_lock' : isExecutionGateReport(raw) ? 'execution_gates' : 'simplified'; }
   function inventory(lesson, corrections = [], options = {}) {
     const schemaVersion = typeof options === 'string' ? options : options.schemaVersion || SPEAKING_SCHEMA_VERSION;
     const legacy = !atLeast(schemaVersion, 2, 25), vocabularyOnly = isVocabularyOnlyReport({schemaVersion});
@@ -116,8 +117,16 @@
       add('important_article_determiner',fixed,'單數可數名詞片語需要 a。');
       better=fixed;
     }
-    if(/\b(?:my\s+)?niece\s+(?:is\s+)?(?:about\s+)?\d+\s+years?\s+old\b/i.test(better)&&!/\bniece\s+is\b/i.test(better)){
+    const ageNumber='(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)';
+    const nieceAgePattern=/\b(?:my\s+)?niece\s+(?:is\s+)?(?:about\s+)?\d+\s+years?\s+old\b/i;
+    if(nieceAgePattern.test(better)&&!/\bniece\s+is\b/i.test(better)){
       const fixed=better.replace(/\b(my\s+niece|niece)\s+((?:about\s+)?\d+\s+years?\s+old)\b/i,'$1 is $2');
+      add('missing_be_verb',fixed,'年齡句需要 be 動詞 is。');
+      better=fixed;
+    }
+    const pronounAgePattern=new RegExp('\\b(she|he)\\s+((?:about\\s+)?'+ageNumber+'\\s+years?\\s+old)\\b','i');
+    if(pronounAgePattern.test(better)){
+      const fixed=better.replace(pronounAgePattern,'$1 is $2');
       add('missing_be_verb',fixed,'年齡句需要 be 動詞 is。');
       better=fixed;
     }
@@ -179,8 +188,10 @@
     if(!original||!better)return {valid:false,issue:'missing_correction_text',changedOriginal:[],changedBetter:[]};
     const originalWords=original.split(' '),betterWords=better.split(' '),originalSet=new Set(originalWords),betterSet=new Set(betterWords);
     const changedOriginal=originalWords.filter(x=>!betterSet.has(x)),changedBetter=betterWords.filter(x=>!originalSet.has(x));
-    const valid=original!==better;
-    return {valid,issue:valid?'': 'false_correction',changedOriginal,changedBetter};
+    const errorSpans=Array.isArray(c?.errorSpans)?c.errorSpans.map(x=>normalizedSentence(x)).filter(Boolean):[];
+    const missingErrorSpans=errorSpans.filter(span=>!(` ${original} `).includes(` ${span} `)&&!original.includes(span));
+    const valid=original!==better&&missingErrorSpans.length===0;
+    return {valid,issue:valid?'':'false_correction',changedOriginal,changedBetter,errorSpans,missingErrorSpans};
   }
   function isFalseCorrection(c) { return !!c && !validateCorrection(c).valid; }
   function fullVocabularyCoverageAudit(s) {
@@ -239,8 +250,8 @@
         return fail('explicit_skip', 'Learner 明確跳過，本項仍保持未完成。');
       }
       if (r.targetOrTask !== 'resolved') return fail('target_not_produced', '尚未完成 Target / Task Resolution Gate。');
-      if (r.queueUpdated !== true && ['not_needed','retried','declined'].includes(r.correction)) return fail('queue_order_violation', '完成本項後需更新 queue，再由 FIRST unresolved item 決定下一題。');
       if (r.recallSupport === 'coach_answer' && e.independentAfterCoachAnswer !== true) return fail('model_only', 'Coach 已提供答案；需要後續 Learner 獨立回答才能成為證據。');
+      if (r.queueUpdated !== true && ['not_needed','retried','declined'].includes(r.correction)) return fail('queue_order_violation', '完成本項後需更新 queue，再由 FIRST unresolved item 決定下一題。');
     }
     if (!['confirmed', 'likely'].includes(e.utteranceReliability) || e.transcriptionIssue !== false) return fail('unreliable_transcript', '語音或轉錄尚未確認；speech recognition failure 不得變成 Learner failure。');
     const evidencePhases = e.taskMode === 'vocabulary_production' ? ['warmup', 'lesson_application', 'knowledge_integration'] : ['lesson_application', 'knowledge_integration'];
@@ -292,12 +303,14 @@
       if (c.learnerRetried && !retryUtterance) throw new Error('learnerRetried=true 時需保留 retryUtterance。');
       const coverageId = text(c.coverageId).trim();
       if (coverageId && !queue.some(x => x.coverageId === coverageId)) throw new Error('speaking correction 的 coverageId 無法對應本課。');
+      const errorSpans=Array.isArray(c.errorSpans)?c.errorSpans.map(x=>text(x).trim()).filter(Boolean):[];
+      if(isVocabularyStabilityReport({schemaVersion})&&!errorSpans.length)throw new Error('V2.25.6 correction 必須保留實際原句中的 errorSpans。');
       if (isExecutionGateReport({schemaVersion})) {
         if (!['retried', 'declined'].includes(c.resolution)) throw new Error('Speaking correction 必須記錄 retried 或 declined。');
         if (c.resolution === 'retried' && (c.learnerRetried !== true || c.retryLearnerFinished !== true || !['confirmed','likely'].includes(c.retryUtteranceReliability) || c.retryTranscriptionIssue !== false)) throw new Error('Retry 必須等 Learner 完整說完，並保留可靠的 retry evidence。');
         if (c.resolution === 'declined' && (c.learnerRetried !== false || !text(c.learnerDeclineWords).trim())) throw new Error('declined 必須保留 Learner 明確拒絕 Retry 的原話。');
       }
-      return { ...(target ? { target } : {}), ...(coverageId ? { coverageId } : {}), original, better, reason, learnerRetried: c.learnerRetried, ...(retryUtterance ? { retryUtterance } : {}), ...(c.resolution ? { resolution:c.resolution } : {}), ...(c.retryLearnerFinished !== undefined ? { retryLearnerFinished:c.retryLearnerFinished } : {}), ...(c.retryUtteranceReliability ? { retryUtteranceReliability:c.retryUtteranceReliability } : {}), ...(c.retryTranscriptionIssue !== undefined ? { retryTranscriptionIssue:c.retryTranscriptionIssue } : {}), ...(text(c.learnerDeclineWords).trim() ? { learnerDeclineWords:text(c.learnerDeclineWords).trim() } : {}) };
+      return { ...(target ? { target } : {}), ...(coverageId ? { coverageId } : {}), original, better, reason, ...(errorSpans.length?{errorSpans}:{}), learnerRetried: c.learnerRetried, ...(retryUtterance ? { retryUtterance } : {}), ...(c.resolution ? { resolution:c.resolution } : {}), ...(c.retryLearnerFinished !== undefined ? { retryLearnerFinished:c.retryLearnerFinished } : {}), ...(c.retryUtteranceReliability ? { retryUtteranceReliability:c.retryUtteranceReliability } : {}), ...(c.retryTranscriptionIssue !== undefined ? { retryTranscriptionIssue:c.retryTranscriptionIssue } : {}), ...(text(c.learnerDeclineWords).trim() ? { learnerDeclineWords:text(c.learnerDeclineWords).trim() } : {}) };
     });
   }
   function applyReport(previous, raw) {
@@ -317,7 +330,7 @@
     speakingCorrections=speakingCorrections.filter(c=>!falseCorrections.includes(c));
     const allowed = new Map(s.activeAttempt.items.map((x,i) => [x.coverageId, {...x,queuePosition:s.queue.findIndex(q=>q.coverageId===x.coverageId)+1,attemptPosition:i+1}]));
     const warnings = [], checks = [], seen = new Set(), evaluated = [];
-    const allowedIssueTypes=new Set(['advanced_before_current_item_resolved','advanced_before_target_resolution','advanced_before_retry','missed_required_item','hearing_confirmation_skipped','semantic_guess_under_uncertainty','false_correction','unsupported_praise','unsupported_completion_claim','coach_answer_counted_as_learner_evidence','grammar_item_skipped','premature_final_challenge','premature_wrap_up','queue_order_violation','missing_required_correction','fabricated_accuracy','fabricated_attempt_sequence']);
+    const allowedIssueTypes=new Set(['advanced_before_current_item_resolved','advanced_before_target_resolution','advanced_before_retry','missed_required_item','hearing_confirmation_skipped','semantic_guess_under_uncertainty','false_correction','unsupported_praise','unsupported_completion_claim','coach_answer_counted_as_learner_evidence','grammar_item_skipped','premature_final_challenge','premature_wrap_up','queue_order_violation','missing_required_correction','fabricated_accuracy','fabricated_attempt_sequence','voice_language_violation','correction_retry_bypassed','incorrect_hearing_assumption','premature_session_completion','coverage_audit_failure']);
     const coachExecutionIssues = (Array.isArray(raw.coachExecutionIssues) ? raw.coachExecutionIssues : []).filter(x=>x&&typeof x==='object'&&allowedIssueTypes.has(text(x.type))).map(x=>({type:text(x.type),coverageId:text(x.coverageId),notes:text(x.notes)}));
     const issue = (type,item,note) => { if (!coachExecutionIssues.some(x=>x.type===type&&x.coverageId===(item?.coverageId||''))) coachExecutionIssues.push({type,coverageId:item?.coverageId||'',notes:note}); };
     for(const c of falseCorrections){const item=s.queue.find(x=>x.coverageId===c.coverageId);issue('false_correction',item,'Proposed correction 與 Learner 原句實質相同；未記為 Learner weakness。');}
@@ -329,7 +342,8 @@
       if(falseCorrection){e.productionQuality='acceptable';e.needsReview=false;e.correctionRequired=false;e.resolution={...(e.resolution||{}),correction:'not_needed'};e.correctionLock='none';if(finalStateOf(e,raw.schemaVersion)!=='RESOLVED'){e.runtimeFinalState='RESOLVED';e.finalItemState='RESOLVED';if(Array.isArray(e.currentItemStateHistory)){e.currentItemStateHistory=e.currentItemStateHistory.filter(x=>!['CORRECTION_REQUIRED','AWAITING_RETRY'].includes(x));if(e.currentItemStateHistory.at(-1)!=='RESOLVED')e.currentItemStateHistory.push('RESOLVED');}}}
       let result = assess(item, e, raw.schemaVersion);
       const assessedAccuracy = result.accuracy;
-      if(integrity&&e.semanticGuessUsed===true&&(!['clear','clarified'].includes(e.resolution?.hearing)||e.transcriptionIssue!==false)){issue('semantic_guess_under_uncertainty',item,'ASR 未確認時不得猜測 Learner 原意。');result={ok:false,remainingReason:'hearing_unresolved',validationNote:'ASR 未確認且使用 semantic guess；保持 Hearing Lock。'};}
+      if(isVocabularyStabilityReport(raw)&&/[\u3400-\u9fff]/u.test(text(e.newPrompt)))issue('voice_language_violation',item,'Speaking question 應以 English 提問；此問題含中文，記為 Coach execution issue。');
+      if(integrity&&e.semanticGuessUsed===true&&(!['clear','clarified'].includes(e.resolution?.hearing)||e.transcriptionIssue!==false)){issue(isVocabularyStabilityReport(raw)?'incorrect_hearing_assumption':'semantic_guess_under_uncertainty',item,'ASR 未確認時不得猜測 Learner 原意。');result={ok:false,remainingReason:'hearing_unresolved',validationNote:'ASR 未確認且使用 semantic guess；保持 Hearing Lock。'};}
       const detectedLanguageIssues = result.ok ? detectImportantLanguageIssues(e.learnerUtterance,item) : [];
       const needsCorrection = result.ok && (detectedLanguageIssues.length>0 || e.importantLanguageError === true || e.productionQuality === 'needs_review' || e.needsReview === true || result.accuracy === 'incorrect');
       const correction = speakingCorrections.find(c => c.coverageId === item.coverageId);
@@ -341,7 +355,7 @@
         const correctionResolution = e.resolution?.correction;
         if (needsCorrection && (e.correctionRequired !== true || !correction || !['retried','declined'].includes(correction.resolution) || correctionResolution !== correction.resolution || (correction.resolution==='retried'&&!retryAccepted))) {
           result = {ok:false,remainingReason:'correction_unresolved',validationNote:'重要錯誤尚未完成 My sentence / Better / Why 與 Retry／明確 declined。'};
-          issue(finalStateOf(e,raw.schemaVersion)==='AWAITING_RETRY'?'advanced_before_retry':'missing_required_correction',item,result.validationNote);
+          issue(isVocabularyStabilityReport(raw)?'correction_retry_bypassed':finalStateOf(e,raw.schemaVersion)==='AWAITING_RETRY'?'advanced_before_retry':'missing_required_correction',item,result.validationNote);
         }
         if (!needsCorrection && (e.correctionRequired !== false || correctionResolution !== 'not_needed')) result = {ok:false,remainingReason:'correction_unresolved',validationNote:'需明確記錄本項不需要 correction，或完成實際 correction。'};
         if (vocabularyOnly && needsCorrection && correction?.resolution === 'declined') result = {ok:false,remainingReason:'correction_unresolved',validationNote:'Vocabulary-only Coverage 的重要錯誤需要 Learner 完成 Retry；declined 只能保存為未完成。'};
@@ -410,7 +424,7 @@
     const finalCorrectionOK=!integrity||['not_needed','retried','declined'].includes(f.correction)&&f.correctionResolved===true;
     const independentFinal=integrity?f.independentProduction===true&&f.coachSuppliedAnswer===false:f.independentProduction!==false&&f.coachSuppliedAnswer!==true;
     const finalOK=isSimplifiedReport(raw)?afterQueue&&preFinalAuditOK&&finalAuditOK&&finalCorrectionOK&&f.learnerFinished===true&&f.feedbackGiven===true&&independentFinal&&reliableFinal:afterQueue&&f.learnerFinished===true&&f.independentProduction===true&&f.coachSuppliedAnswer===false&&f.feedbackGiven===true&&reliableFinal;
-    if(finalOK)s.finalChallengeStatus={...clone(f),evidenceValid:true,verified:true,attemptId:raw.continuationAttemptId};else if(finalStarted&&integrity)issue('premature_final_challenge',s.remainingCoverage[0],`Final Challenge blocked: remaining=${s.remainingCoverage.length}, correctionLocks=${correctionLockCount}.`);
+    if(finalOK)s.finalChallengeStatus={...clone(f),evidenceValid:true,verified:true,attemptId:raw.continuationAttemptId};else if(finalStarted&&integrity){issue('premature_final_challenge',s.remainingCoverage[0],`Final Challenge blocked: remaining=${s.remainingCoverage.length}, correctionLocks=${correctionLockCount}.`);if(isVocabularyStabilityReport(raw))issue('coverage_audit_failure',s.remainingCoverage[0],'Vocabulary Coverage Audit 未通過，Final Challenge 保持封鎖。');}
     const finalPhase=s.phaseProgress.find(x=>x.phaseId==='final_challenge');if(finalOK&&finalPhase)finalPhase.status='completed';if(!s.finalChallengeStatus?.verified&&finalPhase?.status==='completed'){finalPhase.status='partial';warnings.push('Final Challenge 缺少完整回答、回饋、Final Audit，或發生在 gate 通過之前。');}
     let endReason=raw.endReason;const stop=raw.stopContext||{};const explicitStop=value=>/\b(?:stop|end (?:the )?(?:session|practice)|quit|don['’]?t want to continue|enough for today|have to go)\b|停止|結束(?:練習|口說)?|今天(?:先)?到這|不要再練/i.test(text(value));
     if(endReason==='learner_agreed_stop'&&(!text(stop.externalReason).trim()||/time limit|long conversation|deadline|minutes elapsed|時間到|聊太久|時間上限/i.test(stop.externalReason)||!explicitStop(stop.learnerWords)||stop.coachInitiatedWrapUp!==false)){endReason='incomplete';warnings.push('一般 Yes／Okay、時間壓力或 Coach 誘導收尾，不是有效停止同意。');issue('premature_wrap_up',s.remainingCoverage[0],'Coverage 或 correction lock 尚未清除。');}
@@ -419,7 +433,7 @@
     s.completed=s.osVerifiedCompleted=!!(s.queue.length&&!s.remainingCoverage.length&&correctionLockCount===0&&allEvidenceValid&&s.finalChallengeStatus?.verified&&(isSimplifiedReport(raw)||legacyPhasesComplete));
     s.endReason=s.completed?'completed':['learner_requested_stop','learner_agreed_stop','technical_interruption'].includes(endReason)?endReason:'incomplete';
     if(s.completed)s.runtimeQueue.sessionState='COMPLETED';else if(['learner_requested_stop','learner_agreed_stop','technical_interruption'].includes(s.endReason)){s.runtimeQueue.sessionState='STOPPED';s.runtimeQueue.currentItemState='SESSION_STOPPED';}
-    if(s.gptClaimedCompleted&&!s.completed){warnings.push('GPT 宣稱完成，但 English OS 驗證未完成；已保存有效證據。');issue('unsupported_completion_claim',s.remainingCoverage[0],'仍有 Required Coverage、Correction、Pre-Final、Final Challenge 或 Final Audit gate 未完成。');}
+    if(s.gptClaimedCompleted&&!s.completed){warnings.push('GPT 宣稱完成，但 English OS 驗證未完成；已保存有效證據。');issue(isVocabularyStabilityReport(raw)?'premature_session_completion':'unsupported_completion_claim',s.remainingCoverage[0],'仍有 Required Coverage、Correction、Pre-Final、Final Challenge 或 Final Audit gate 未完成。');}
     const minutes=typeof raw.speakingMinutes==='number'&&Number.isFinite(raw.speakingMinutes)&&raw.speakingMinutes>=0&&['measured','estimated'].includes(raw.timeBasis)?raw.speakingMinutes:null;
     const emptyFinal={attemptSequence:null,newPrompt:'',learnerUtterance:'',utteranceReliability:'not_applicable',transcriptionIssue:false,learnerFinished:false,independentProduction:false,coachSuppliedAnswer:false,feedbackGiven:false,correction:'not_needed',correctionResolved:false,preFinalAuditPassed:false,finalAuditPassed:false,remainingCoverageBeforeChallenge:null,auditedCoverageIds:[],evidenceValid:false,verified:false};
     const report={...clone(raw),schemaVersion:raw.schemaVersion,completed:s.completed,gptClaimedCompleted:s.gptClaimedCompleted,osVerifiedCompleted:s.completed,endReason:s.endReason,phaseProgress:clone(s.phaseProgress),finalChallenge:clone(s.finalChallengeStatus||emptyFinal),coverageChecks:checks,speakingCorrections,sessionCoverage:clone(s.sessionCoverage),runtimeQueue:clone(s.runtimeQueue),coachExecutionIssues,validationWarnings:warnings,speakingMinutes:minutes,timeBasis:minutes===null?'not_recorded':raw.timeBasis,serverVerified:true};
@@ -440,5 +454,5 @@
     const { attempts, ...rest } = s;
     return { ...rest, speakingSchemaVersion:SPEAKING_SCHEMA_VERSION, attemptCount: attempts.length, reports: attempts.map(a => a.report) };
   }
-  root.EnglishSpeakingQueue = { SCHEMA_VERSION:SPEAKING_SCHEMA_VERSION, PHASES, REASONS, ITEM_STATES, TERMINAL_ITEM_STATES, stable, version, isQueueReport, isSimplifiedReport, isExecutionGateReport, isCurrentItemReport, isRuntimeIntegrityReport, isVocabularyOnlyReport, advanceRequiredQueue, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget, capitalizationChoice, detectImportantLanguageIssues, validateCorrection, retrySatisfiesItem, decideCurrentItemTransition, fullVocabularyCoverageAudit };
+  root.EnglishSpeakingQueue = { SCHEMA_VERSION:SPEAKING_SCHEMA_VERSION, PHASES, REASONS, ITEM_STATES, TERMINAL_ITEM_STATES, stable, version, isQueueReport, isSimplifiedReport, isExecutionGateReport, isCurrentItemReport, isRuntimeIntegrityReport, isVocabularyOnlyReport, isVocabularyStabilityReport, advanceRequiredQueue, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget, capitalizationChoice, detectImportantLanguageIssues, validateCorrection, retrySatisfiesItem, decideCurrentItemTransition, fullVocabularyCoverageAudit };
 })(globalThis);

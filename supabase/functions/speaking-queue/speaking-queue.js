@@ -1,8 +1,8 @@
-/* Shared, deterministic V2.25.1 coverage rules. No DOM, storage, network, or model calls. */
+/* Shared, deterministic V2.25.2 coverage and execution-gate rules. No DOM, storage, network, or model calls. */
 (function (root) {
   'use strict';
   const PHASES = ['warmup', 'lesson_application', 'knowledge_integration', 'final_challenge'];
-  const REASONS = ['not_asked', 'no_learner_response', 'unreliable_transcript', 'wrong_task_mode', 'coach_only_target', 'model_only', 'session_stopped'];
+  const REASONS = ['not_asked', 'no_learner_response', 'unreliable_transcript', 'hearing_unresolved', 'target_not_produced', 'correction_unresolved', 'queue_order_violation', 'explicit_skip', 'wrong_task_mode', 'coach_only_target', 'model_only', 'session_stopped'];
   const text = x => typeof x === 'string' ? x : '';
   const clone = x => JSON.parse(JSON.stringify(x));
   function stable(x) { return JSON.stringify(sort(x)); }
@@ -16,8 +16,10 @@
   function atLeast(raw, major, minor) { const v = parsedVersion(raw); return !!v && (v[0] > major || (v[0] === major && v[1] >= minor)); }
   function isQueueReport(raw) { return atLeast(raw?.schemaVersion, 2, 24); }
   function isSimplifiedReport(raw) { return atLeast(raw?.schemaVersion, 2, 25); }
+  function isExecutionGateReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 2)))); }
+  function schemaClass(raw) { return !isSimplifiedReport(raw) ? 'legacy' : isExecutionGateReport(raw) ? 'execution_gates' : 'simplified'; }
   function inventory(lesson, corrections = [], options = {}) {
-    const schemaVersion = typeof options === 'string' ? options : options.schemaVersion || '2.25.1';
+    const schemaVersion = typeof options === 'string' ? options : options.schemaVersion || '2.25.2';
     const legacy = !atLeast(schemaVersion, 2, 25);
     const c = lesson.curriculum || {}, items = new Map();
     function add(kind, key, target, label, taskMode, source, extra = {}) {
@@ -48,7 +50,7 @@
     s.sessionCoverage = { total: s.queue.length, practiced: s.completedCoverage.length, remaining: s.remainingCoverage.length, remainingIds: s.remainingCoverage.map(x => x.coverageId), byKind };
     return s;
   }
-  function reconcile(previous, items, identity = {}, schemaVersion = '2.25.1') {
+  function reconcile(previous, items, identity = {}, schemaVersion = '2.25.2') {
     const s = previous ? clone(previous) : { ...identity, schemaVersion, attempts: [], phaseProgress: PHASES.map(phaseId => ({ phaseId, status: 'not_started', notes: '' })), finalChallengeStatus: null, completed: false, osVerifiedCompleted: false };
     const old = new Map((s.queue || []).map(x => [x.coverageId, x]));
     const newIds = new Set(items.map(x => x.coverageId));
@@ -77,13 +79,25 @@
     const lower = /\blower(?:case)?\b|小寫/.test(v), capital = /\b(?:capital|uppercase|upper-case)\b|大寫/.test(v);
     return lower === capital ? null : lower ? 'lowercase' : 'capital';
   }
-  function assess(item, e) {
+  function assess(item, e, schemaVersion = '2.25.1') {
     const fail = (remainingReason, validationNote) => ({ ok: false, remainingReason, validationNote });
     if (!e) return fail('not_asked', '尚無這項的回報。');
     if (e.sourceVersion !== item.sourceVersion) return fail('wrong_task_mode', 'sourceVersion 已過期。');
     if (!text(e.newPrompt).trim()) return fail('not_asked', '沒有實際題目。');
     if (!text(e.learnerUtterance).trim()) return fail('no_learner_response', '沒有實際回答。');
-    if (!['confirmed', 'likely'].includes(e.utteranceReliability) || e.transcriptionIssue !== false) return fail('unreliable_transcript', '語音或轉錄尚未確認。');
+    if (isExecutionGateReport({schemaVersion})) {
+      const r = e.resolution || {};
+      if (!['clear', 'clarified'].includes(r.hearing)) return fail('hearing_unresolved', '尚未完成 Hearing Confirmation Gate。');
+      if (r.hearing === 'clarified' && (!text(r.clarificationPrompt).trim() || !text(r.clarificationResponse).trim())) return fail('hearing_unresolved', '聽辨不確定時需保留確認問題與 Learner 的確認／重說。');
+      if (r.targetOrTask === 'explicit_skip') {
+        if (!/\b(?:skip|don['’]?t practice|do not practice)\b|跳過|不要練/i.test(text(r.skipLearnerWords))) return fail('target_not_produced', 'Next／下一題不是 explicit Skip；需保留 Learner 明確跳過的原話。');
+        return fail('explicit_skip', 'Learner 明確跳過，本項仍保持未完成。');
+      }
+      if (r.targetOrTask !== 'resolved') return fail('target_not_produced', '尚未完成 Target / Task Resolution Gate。');
+      if (r.queueUpdated !== true) return fail('queue_order_violation', '完成本項後需更新 queue，再由 FIRST unresolved item 決定下一題。');
+      if (r.recallSupport === 'coach_answer') return fail('model_only', 'Coach 已直接提供 target；不能當作 Learner 獨立產出。');
+    }
+    if (!['confirmed', 'likely'].includes(e.utteranceReliability) || e.transcriptionIssue !== false) return fail('unreliable_transcript', '語音或轉錄尚未確認；speech recognition failure 不得變成 Learner failure。');
     const evidencePhases = e.taskMode === 'vocabulary_production' ? ['warmup', 'lesson_application', 'knowledge_integration'] : ['lesson_application', 'knowledge_integration'];
     if (e.taskMode !== item.taskMode || !evidencePhases.includes(e.phaseId)) return fail('wrong_task_mode', '任務或階段不符；只有可靠的 Vocabulary 自然產出可在暖身計入 Coverage，Final Challenge 不補漏題。');
     if (e.learnerFinished !== true) return fail('no_learner_response', 'Learner 尚未完成回答。');
@@ -123,7 +137,7 @@
     if (e.taskMode === 'correction_transfer' && (e.newContext !== true || e.correctionId !== item.correctionId || !text(e.transferFocus).trim())) return fail('wrong_task_mode', '需對應這筆訂正，在新情境測試原問題。');
     return { ok: true };
   }
-  function normalizeSpeakingCorrections(raw, queue) {
+  function normalizeSpeakingCorrections(raw, queue, schemaVersion = '2.25.1') {
     if (!Array.isArray(raw)) throw new Error('V2.25+ Report 需包含 speakingCorrections 陣列。');
     return raw.map((c, i) => {
       if (!c || typeof c !== 'object') throw new Error('speakingCorrections[' + i + '] 格式不正確。');
@@ -133,7 +147,12 @@
       if (c.learnerRetried && !retryUtterance) throw new Error('learnerRetried=true 時需保留 retryUtterance。');
       const coverageId = text(c.coverageId).trim();
       if (coverageId && !queue.some(x => x.coverageId === coverageId)) throw new Error('speaking correction 的 coverageId 無法對應本課。');
-      return { ...(target ? { target } : {}), ...(coverageId ? { coverageId } : {}), original, better, reason, learnerRetried: c.learnerRetried, ...(retryUtterance ? { retryUtterance } : {}) };
+      if (isExecutionGateReport({schemaVersion})) {
+        if (!['retried', 'declined'].includes(c.resolution)) throw new Error('V2.25.2 speaking correction 必須記錄 retried 或 declined。');
+        if (c.resolution === 'retried' && (c.learnerRetried !== true || c.retryLearnerFinished !== true || !['confirmed','likely'].includes(c.retryUtteranceReliability) || c.retryTranscriptionIssue !== false)) throw new Error('Retry 必須等 Learner 完整說完，並保留可靠的 retry evidence。');
+        if (c.resolution === 'declined' && (c.learnerRetried !== false || !text(c.learnerDeclineWords).trim())) throw new Error('declined 必須保留 Learner 明確拒絕 Retry 的原話。');
+      }
+      return { ...(target ? { target } : {}), ...(coverageId ? { coverageId } : {}), original, better, reason, learnerRetried: c.learnerRetried, ...(retryUtterance ? { retryUtterance } : {}), ...(c.resolution ? { resolution:c.resolution } : {}), ...(c.retryLearnerFinished !== undefined ? { retryLearnerFinished:c.retryLearnerFinished } : {}), ...(c.retryUtteranceReliability ? { retryUtteranceReliability:c.retryUtteranceReliability } : {}), ...(c.retryTranscriptionIssue !== undefined ? { retryTranscriptionIssue:c.retryTranscriptionIssue } : {}), ...(text(c.learnerDeclineWords).trim() ? { learnerDeclineWords:text(c.learnerDeclineWords).trim() } : {}) };
     });
   }
   function applyReport(previous, raw) {
@@ -145,18 +164,38 @@
       return { state: s, report: oldAttempt.report, duplicate: true };
     }
     if (!s.activeAttempt || s.activeAttempt.id !== raw.continuationAttemptId) throw new Error('找不到這次 attempt，請先由網站準備／續練口說內容。');
-    const attemptSimplified = atLeast(s.activeAttempt.schemaVersion || '2.24.0', 2, 25);
-    if (attemptSimplified !== isSimplifiedReport(raw)) throw new Error('Report schemaVersion 與這次口說內容不符，請使用同一份 Brief 產生回報。');
+    if (schemaClass({schemaVersion:s.activeAttempt.schemaVersion || '2.24.0'}) !== schemaClass(raw)) throw new Error('Report schemaVersion 與這次口說內容不符，請使用同一份 Brief 產生回報。');
     if (!Array.isArray(raw.coverageChecks) || !Array.isArray(raw.phaseProgress)) throw new Error('Report 需包含 coverageChecks 與 phaseProgress 陣列。');
-    const speakingCorrections = isSimplifiedReport(raw) ? normalizeSpeakingCorrections(raw.speakingCorrections, s.queue) : Array.isArray(raw.speakingCorrections) ? normalizeSpeakingCorrections(raw.speakingCorrections, s.queue) : [];
+    const speakingCorrections = isSimplifiedReport(raw) ? normalizeSpeakingCorrections(raw.speakingCorrections, s.queue, raw.schemaVersion) : Array.isArray(raw.speakingCorrections) ? normalizeSpeakingCorrections(raw.speakingCorrections, s.queue, raw.schemaVersion) : [];
     const allowed = new Map(s.activeAttempt.items.map(x => [x.coverageId, x.sourceVersion]));
-    const warnings = [], checks = [], seen = new Set();
-    for (const e of raw.coverageChecks) {
+    const warnings = [], checks = [], seen = new Set(), evaluated = [];
+    for (const [inputIndex,e] of raw.coverageChecks.entries()) {
       const item = s.queue.find(x => x.coverageId === e?.coverageId);
       if (!item || allowed.get(item.coverageId) !== e.sourceVersion) { warnings.push('忽略未知、已完成或舊版本 Coverage：' + text(e?.coverageId)); continue; }
+      let result = assess(item, e, raw.schemaVersion);
+      if (isExecutionGateReport(raw) && result.ok) {
+        const needsCorrection = e.productionQuality === 'needs_review' || e.needsReview === true || result.accuracy === 'incorrect';
+        const correction = speakingCorrections.find(c => c.coverageId === item.coverageId);
+        const correctionResolution = e.resolution?.correction;
+        if (needsCorrection && (e.correctionRequired !== true || !correction || !['retried','declined'].includes(correction.resolution) || correctionResolution !== correction.resolution)) result = {ok:false,remainingReason:'correction_unresolved',validationNote:'重要錯誤尚未完成 My sentence / Better / Why 與 Retry／明確 declined。'};
+        if (!needsCorrection && (e.correctionRequired !== false || correctionResolution !== 'not_needed')) result = {ok:false,remainingReason:'correction_unresolved',validationNote:'需明確記錄本項不需要 correction，或完成實際 correction。'};
+      }
+      evaluated.push({e,item,result,inputIndex});
+    }
+    if (isExecutionGateReport(raw)) {
+      const unresolved = s.activeAttempt.items.map(x => x.coverageId);
+      const ordered = [...evaluated].sort((a,b)=>(Number.isSafeInteger(a.e.sequence)?a.e.sequence:Number.MAX_SAFE_INTEGER)-(Number.isSafeInteger(b.e.sequence)?b.e.sequence:Number.MAX_SAFE_INTEGER)||a.inputIndex-b.inputIndex);
+      for (const row of ordered) {
+        const warmupVocabulary = row.e.phaseId === 'warmup' && row.item.kind === 'vocabulary' && row.result.ok;
+        if (warmupVocabulary) { const i=unresolved.indexOf(row.item.coverageId); if(i>=0) unresolved.splice(i,1); continue; }
+        if (row.item.coverageId !== unresolved[0]) { row.result = {ok:false,remainingReason:'queue_order_violation',validationNote:'這不是當時 FIRST unresolved Required Coverage；conversation flow 不可覆蓋 syllabus state。'}; continue; }
+        const explicitSkip = row.e.status === 'not_tested' && row.e.resolution?.targetOrTask === 'explicit_skip' && row.e.remainingReason === 'explicit_skip';
+        if (row.result.ok || explicitSkip) unresolved.shift();
+      }
+    }
+    for (const {e,item,result} of evaluated) {
       if (seen.has(item.coverageId)) warnings.push('同項有多筆嘗試；保留已取得的有效證據。');
       seen.add(item.coverageId);
-      const result = assess(item, e);
       checks.push({ ...clone(e), ...result, status: result.ok ? 'practiced' : 'not_tested', label: item.label, target: item.target, kind: item.kind, lessonId: item.lessonId });
       if (result.ok) { item.state = 'PRACTICED'; item.evidence = { ...clone(e), ...result, attemptId: raw.continuationAttemptId }; delete item.remainingReason; delete item.validationNote; }
       else if (!practiced(item)) Object.assign(item, result);
@@ -171,7 +210,9 @@
     const currentEvidence = s.completedCoverage.filter(x => x.evidence?.attemptId === raw.continuationAttemptId);
     const afterQueue = s.queue.length > 0 && !s.remainingCoverage.length && Number.isSafeInteger(f.sequence) && f.sequence > 0 && currentEvidence.every(x => x.evidence.sequence < f.sequence);
     const reliableFinal = text(f.newPrompt).trim() && text(f.learnerUtterance).trim() && ['confirmed', 'likely'].includes(f.utteranceReliability) && f.transcriptionIssue === false;
-    const finalOK = isSimplifiedReport(raw) ? afterQueue && f.learnerFinished === true && f.feedbackGiven === true && reliableFinal : afterQueue && f.learnerFinished === true && f.independentProduction === true && f.coachSuppliedAnswer === false && f.feedbackGiven === true && reliableFinal;
+    const auditedIds = Array.isArray(f.auditedCoverageIds) ? [...new Set(f.auditedCoverageIds)] : [];
+    const preFinalAuditOK = !isExecutionGateReport(raw) || (f.preFinalAuditPassed === true && f.remainingCoverageBeforeChallenge === 0 && auditedIds.length === s.queue.length && s.queue.every(x => auditedIds.includes(x.coverageId)));
+    const finalOK = isSimplifiedReport(raw) ? afterQueue && preFinalAuditOK && f.learnerFinished === true && f.feedbackGiven === true && reliableFinal : afterQueue && f.learnerFinished === true && f.independentProduction === true && f.coachSuppliedAnswer === false && f.feedbackGiven === true && reliableFinal;
     if (finalOK) s.finalChallengeStatus = { ...clone(f), verified: true, attemptId: raw.continuationAttemptId };
     const finalPhase = s.phaseProgress.find(x => x.phaseId === 'final_challenge');
     if (finalOK && finalPhase) finalPhase.status = 'completed';
@@ -191,10 +232,10 @@
     s.activeAttempt = null;
     return { state: summarize(s), report, duplicate: false };
   }
-  function prepare(s, attemptId, schemaVersion = '2.25.1') {
+  function prepare(s, attemptId, schemaVersion = '2.25.2') {
     const next = clone(s);
     const currentVersion = next.activeAttempt?.schemaVersion || (next.activeAttempt ? '2.24.0' : null);
-    if (next.activeAttempt && atLeast(currentVersion, 2, 25) !== atLeast(schemaVersion, 2, 25)) next.activeAttempt = null;
+    if (next.activeAttempt && schemaClass({schemaVersion:currentVersion}) !== schemaClass({schemaVersion})) next.activeAttempt = null;
     if (!next.activeAttempt) next.activeAttempt = { id: attemptId, schemaVersion, items: next.remainingCoverage.map(x => ({ coverageId: x.coverageId, sourceVersion: x.sourceVersion })) };
     return next;
   }
@@ -203,5 +244,5 @@
     const { attempts, ...rest } = s;
     return { ...rest, attemptCount: attempts.length, reports: attempts.map(a => a.report) };
   }
-  root.EnglishSpeakingQueue = { PHASES, REASONS, stable, version, isQueueReport, isSimplifiedReport, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget, capitalizationChoice };
+  root.EnglishSpeakingQueue = { PHASES, REASONS, stable, version, isQueueReport, isSimplifiedReport, isExecutionGateReport, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget, capitalizationChoice };
 })(globalThis);

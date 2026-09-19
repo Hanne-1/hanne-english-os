@@ -1,10 +1,10 @@
 {
   "name": "hanne-english-os",
-  "version": "2.25.4",
+  "version": "2.25.5",
   "private": true,
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/speaking-queue.test.mjs tests/current-item-lock.test.mjs tests/runtime-integrity.test.mjs tests/v254-clean-checkpoints.test.mjs tests/v254-targeted-acceptance.test.mjs && node tests/ui.cjs"
+    "test": "node --test tests/speaking-queue.test.mjs tests/current-item-lock.test.mjs tests/runtime-integrity.test.mjs tests/v254-clean-checkpoints.test.mjs tests/v254-targeted-acceptance.test.mjs tests/v255-vocabulary-only.test.mjs && node tests/ui.cjs"
   },
   "engines": { "node": ">=22" }
 }

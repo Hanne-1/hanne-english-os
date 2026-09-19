@@ -1,7 +1,7 @@
 /* Shared, deterministic Speaking runtime rules. New sessions use one schema source. */
 (function (root) {
   'use strict';
-  const SPEAKING_SCHEMA_VERSION = '2.25.4';
+  const SPEAKING_SCHEMA_VERSION = '2.25.5';
   const PHASES = ['warmup', 'lesson_application', 'knowledge_integration', 'final_challenge'];
   const REASONS = ['not_asked', 'no_learner_response', 'unreliable_transcript', 'hearing_unresolved', 'target_not_produced', 'correction_unresolved', 'queue_order_violation', 'explicit_skip', 'wrong_task_mode', 'coach_only_target', 'model_only', 'session_stopped'];
   const ITEM_STATES = ['PENDING', 'ACTIVE', 'AWAITING_LEARNER', 'HEARING_UNRESOLVED', 'TARGET_UNRESOLVED', 'TASK_UNRESOLVED', 'CORRECTION_REQUIRED', 'AWAITING_RETRY', 'RESOLVED', 'RESOLVED_WITH_DECLINED_CORRECTION', 'EXPLICITLY_SKIPPED', 'SESSION_STOPPED'];
@@ -22,10 +22,11 @@
   function isExecutionGateReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 2)))); }
   function isCurrentItemReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 3)))); }
   function isRuntimeIntegrityReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 4)))); }
-  function schemaClass(raw) { return !isSimplifiedReport(raw) ? 'legacy' : isRuntimeIntegrityReport(raw) ? 'runtime_integrity' : isCurrentItemReport(raw) ? 'current_item_lock' : isExecutionGateReport(raw) ? 'execution_gates' : 'simplified'; }
+  function isVocabularyOnlyReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 5)))); }
+  function schemaClass(raw) { return !isSimplifiedReport(raw) ? 'legacy' : isVocabularyOnlyReport(raw) ? 'vocabulary_only' : isRuntimeIntegrityReport(raw) ? 'runtime_integrity' : isCurrentItemReport(raw) ? 'current_item_lock' : isExecutionGateReport(raw) ? 'execution_gates' : 'simplified'; }
   function inventory(lesson, corrections = [], options = {}) {
     const schemaVersion = typeof options === 'string' ? options : options.schemaVersion || SPEAKING_SCHEMA_VERSION;
-    const legacy = !atLeast(schemaVersion, 2, 25);
+    const legacy = !atLeast(schemaVersion, 2, 25), vocabularyOnly = isVocabularyOnlyReport({schemaVersion});
     const c = lesson.curriculum || {}, items = new Map();
     function add(kind, key, target, label, taskMode, source, extra = {}) {
       if (!text(key).trim()) return;
@@ -33,13 +34,13 @@
       items.set(coverageId, { coverageId, sourceVersion: version({ policy: '2.24.0', taskMode, source }), lessonId: lesson.id, kind, target, label, taskMode, ...extra });
     }
     [...(c.mainVocabulary || []), ...(c.extendedVocabulary || [])].filter(x => !x.excludeFromPractice).forEach(x => add('vocabulary', x.term, x.term, x.term, 'vocabulary_production', { term: x.term, meaning: x.meaning || '', partOfSpeech: x.partOfSpeech || x.pos || '' }));
-    (c.grammar || []).filter(x => !x.excludeFromPractice).forEach(x => {
-      const rule = typeof x === 'string' ? x : x.rule || x.title || x.name || '';
-      const capitalization = /capital|大寫|小寫/i.test(rule);
-      const grammarTask = !capitalization ? 'rule_application' : /誰的|所有格|possessive/i.test(rule) ? 'possessive_title' : /代替|replac|instead of/i.test(rule) ? 'title_replacing_name' : /名字|姓名|name/i.test(rule) ? 'title_with_name' : 'capitalization_decision';
-      const expectedAnswer = grammarTask === 'possessive_title' ? 'lowercase' : capitalization ? 'capital' : null;
-      add('grammar', rule, rule, rule, 'grammar_application', x, { evidenceType: capitalization ? 'capitalization_decision' : 'rule_application', grammarTask, expectedAnswer, grammarSource: x });
-    });
+    if (!vocabularyOnly) (c.grammar || []).filter(x => !x.excludeFromPractice).forEach(x => {
+        const rule = typeof x === 'string' ? x : x.rule || x.title || x.name || '';
+        const capitalization = /capital|大寫|小寫/i.test(rule);
+        const grammarTask = !capitalization ? 'rule_application' : /誰的|所有格|possessive/i.test(rule) ? 'possessive_title' : /代替|replac|instead of/i.test(rule) ? 'title_replacing_name' : /名字|姓名|name/i.test(rule) ? 'title_with_name' : 'capitalization_decision';
+        const expectedAnswer = grammarTask === 'possessive_title' ? 'lowercase' : capitalization ? 'capital' : null;
+        add('grammar', rule, rule, rule, 'grammar_application', x, { evidenceType: capitalization ? 'capitalization_decision' : 'rule_application', grammarTask, expectedAnswer, grammarSource: x });
+      });
     if (legacy) corrections.filter(x => x.lessonId === lesson.id).forEach(x => add('correction', x.correctionId, x.target, x.target + ' · ' + (x.round || x.component) + ' 訂正', x.round === 'spelling' ? 'spelling_recall' : 'correction_transfer', { prompt: x.prompt, answerStatus: x.answerStatus, originalAnswer: x.originalAnswer, gptSuggestedAnswer: x.gptSuggestedAnswer, learnerCorrection: x.learnerCorrection, round: x.round, component: x.component }, { correctionId: x.correctionId, component: x.component, sourcePrompt: x.prompt }));
     return [...items.values()];
   }
@@ -59,21 +60,31 @@
     const s = previous ? clone(previous) : { ...identity, schemaVersion, attempts: [], phaseProgress: PHASES.map(phaseId => ({ phaseId, status: 'not_started', notes: '' })), finalChallengeStatus: null, completed: false, osVerifiedCompleted: false };
     const old = new Map((s.queue || []).map(x => [x.coverageId, x]));
     const newIds = new Set(items.map(x => x.coverageId));
-    const requiredChanged = !!previous && (items.some(x => !old.has(x.coverageId) || old.get(x.coverageId).sourceVersion !== x.sourceVersion) || (s.queue || []).some(x => ['vocabulary', 'grammar'].includes(x.kind) && !newIds.has(x.coverageId)));
+    const addedOrChanged = !!previous && items.some(x => !old.has(x.coverageId) || old.get(x.coverageId).sourceVersion !== x.sourceVersion);
+    const removedRequired = previous ? (s.queue || []).filter(x => ['vocabulary', 'grammar'].includes(x.kind) && !newIds.has(x.coverageId)) : [];
+    const requiredChanged = !!previous && (addedOrChanged || removedRequired.length > 0);
+    const completedVocabularyOnlyMigration = !!previous?.completed && isVocabularyOnlyReport({schemaVersion}) && !addedOrChanged && removedRequired.length > 0 && removedRequired.every(x => x.kind === 'grammar');
     s.queue = items.map(item => {
       const prior = old.get(item.coverageId);
       if (prior?.sourceVersion === item.sourceVersion) return { ...prior, ...item, state: practiced(prior) ? 'PRACTICED' : 'NOT_YET_PRACTICED' };
       return { ...item, state: 'NOT_YET_PRACTICED', remainingReason: 'not_asked', validationNote: prior ? '教材已更新，舊證據不適用。' : '' };
     });
     const previousSchemaVersion = text(s.schemaVersion);
-    s.schemaVersion = previous?.completed ? previousSchemaVersion || schemaVersion : schemaVersion;
+    s.schemaVersion = completedVocabularyOnlyMigration ? schemaVersion : previous?.completed ? previousSchemaVersion || schemaVersion : schemaVersion;
     if (previous && !previous.completed && previousSchemaVersion && previousSchemaVersion !== schemaVersion) s.migrationMetadata = { strategy:'preserve_verified_progress_reset_active_attempt', fromSchemaVersion:previousSchemaVersion, toSchemaVersion:schemaVersion, migrationStage:'reconcile' };
-    if (requiredChanged) {
+    if (requiredChanged && !completedVocabularyOnlyMigration) {
       s.completed = s.osVerifiedCompleted = false; s.finalChallengeStatus = null;
       s.phaseProgress = s.phaseProgress.map(p => p.phaseId === 'final_challenge' ? { ...p, status: 'not_started', notes: '教材更新後需重新完成 Final Challenge。' } : p);
       s.activeAttempt = null;
     }
-    return summarize(s);
+    summarize(s);
+    if(completedVocabularyOnlyMigration){
+      const audit=fullVocabularyCoverageAudit(s);
+      s.runtimeQueue={...audit,sessionState:s.completed?'COMPLETED':audit.passed?'FINAL_CHALLENGE':'REQUIRED_PRACTICE'};
+      delete s.runtimeQueue.passed;delete s.runtimeQueue.auditedCoverageIds;
+      s.migrationMetadata={strategy:'remove_grammar_from_speaking_coverage',fromSchemaVersion:previousSchemaVersion,toSchemaVersion:schemaVersion,migrationStage:'reconcile'};
+    }
+    return s;
   }
   const words = s => text(s).toLowerCase().normalize('NFKC').match(/[a-z]+(?:['’][a-z]+)?/g) || [];
   function containsTarget(utterance, target) {
@@ -100,6 +111,11 @@
       add('incomplete_core_sentence_structure',fixed,'英文名詞片語使用 a + very + adjective + noun。');
       better=fixed;
     }
+    if(/\b(is|was)\s+(very\s+)?kind\s+(girl|boy|person|woman|man)\b/i.test(better)){
+      const fixed=better.replace(/\b(is|was)\s+(very\s+)?kind\s+(girl|boy|person|woman|man)\b/i,(_,verb,very,noun)=>`${verb} a ${very||''}kind ${noun}`);
+      add('important_article_determiner',fixed,'單數可數名詞片語需要 a。');
+      better=fixed;
+    }
     if(/\b(?:my\s+)?niece\s+(?:is\s+)?(?:about\s+)?\d+\s+years?\s+old\b/i.test(better)&&!/\bniece\s+is\b/i.test(better)){
       const fixed=better.replace(/\b(my\s+niece|niece)\s+((?:about\s+)?\d+\s+years?\s+old)\b/i,'$1 is $2');
       add('missing_be_verb',fixed,'年齡句需要 be 動詞 is。');
@@ -114,6 +130,16 @@
     if(target==='ancestor'&&/\bin\s+market\b/i.test(better)){
       const fixed=better.replace(/\bin\s+market\b/i,'in the market');
       add('important_article_preposition',fixed,'這個情境使用 in the market。');
+      better=fixed;
+    }
+    if(target==='descendant'&&/\bis\s+descendant\s+of\b/i.test(better)){
+      const fixed=better.replace(/\bis\s+descendant\s+of\b/i,'is a descendant of');
+      add('important_article_determiner',fixed,'descendant 是單數可數名詞，這裡需要 a descendant of。');
+      better=fixed;
+    }
+    if(target==='spouse'&&/\b(boyfriend|girlfriend|partner|he|she)\s+marry\b/i.test(better)){
+      const fixed=better.replace(/\b(boyfriend|girlfriend|partner|he|she)\s+marry\b/i,'$1 marries');
+      add('third_person_singular',fixed,'第三人稱單數現在式使用 marries。');
       better=fixed;
     }
     if(target&&new RegExp('\\b(?:two|three|four|five|six|seven|eight|nine|ten)\\s+'+target.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i').test(better)){
@@ -133,7 +159,7 @@
     if(input.hearingResolved!==true)return {runtimeState:'HEARING_UNRESOLVED',correctionLock:'none',queueAdvance:false,coachAction:'CLARIFY_HEARING'};
     if(input.targetOrTaskResolved!==true)return {runtimeState:input.kind==='grammar'?'TASK_UNRESOLVED':'TARGET_UNRESOLVED',correctionLock:'none',queueAdvance:false,coachAction:'ELICIT_CURRENT'};
     if(input.importantCorrectionRequired===true){
-      if(input.explicitDecline===true)return {runtimeState:'RESOLVED_WITH_DECLINED_CORRECTION',correctionLock:'declined',queueAdvance:true,coachAction:'ADVANCE'};
+      if(input.explicitDecline===true&&input.allowCorrectionDecline!==false)return {runtimeState:'RESOLVED_WITH_DECLINED_CORRECTION',correctionLock:'declined',queueAdvance:true,coachAction:'ADVANCE'};
       if(input.correctionIssued!==true)return {runtimeState:'CORRECTION_REQUIRED',correctionLock:'required',queueAdvance:false,coachAction:'CORRECT_AND_REQUEST_RETRY'};
       if(input.retryReceived!==true||input.retryFinished!==true||input.retryAccepted!==true)return {runtimeState:'AWAITING_RETRY',correctionLock:'awaiting_retry',queueAdvance:false,coachAction:'WAIT_FOR_RETRY'};
       return {runtimeState:'RESOLVED',correctionLock:'retried',queueAdvance:true,coachAction:'ADVANCE'};
@@ -148,7 +174,22 @@
     return true;
   }
   function normalizedSentence(value) { return text(value).toLowerCase().normalize('NFKC').replace(/[\p{P}\p{S}]+/gu,' ').replace(/\s+/g,' ').trim(); }
-  function isFalseCorrection(c) { return !!c && normalizedSentence(c.original) === normalizedSentence(c.better); }
+  function validateCorrection(c) {
+    const original=normalizedSentence(c?.original), better=normalizedSentence(c?.better);
+    if(!original||!better)return {valid:false,issue:'missing_correction_text',changedOriginal:[],changedBetter:[]};
+    const originalWords=original.split(' '),betterWords=better.split(' '),originalSet=new Set(originalWords),betterSet=new Set(betterWords);
+    const changedOriginal=originalWords.filter(x=>!betterSet.has(x)),changedBetter=betterWords.filter(x=>!originalSet.has(x));
+    const valid=original!==better;
+    return {valid,issue:valid?'': 'false_correction',changedOriginal,changedBetter};
+  }
+  function isFalseCorrection(c) { return !!c && !validateCorrection(c).valid; }
+  function fullVocabularyCoverageAudit(s) {
+    const required=(s?.queue||[]).filter(x=>x.kind==='vocabulary');
+    const resolved=required.filter(practiced),remaining=required.filter(x=>!practiced(x));
+    const correctionLockCount=required.filter(x=>!practiced(x)&&['required','awaiting_retry'].includes(x.correctionLock)).length;
+    const allEvidenceValid=resolved.every(x=>x.evidence&&x.evidence.ok!==false&&x.evidence.evidenceValid!==false)&&remaining.length===0&&correctionLockCount===0;
+    return {totalRequiredCoverage:required.length,resolvedCoverage:resolved.length,remainingCoverage:remaining.length,currentCoverageId:remaining[0]?.coverageId||null,currentRequiredItem:remaining[0]?.coverageId||null,correctionLockCount,allEvidenceValid,passed:required.length>0&&remaining.length===0&&correctionLockCount===0&&allEvidenceValid,auditedCoverageIds:required.map(x=>x.coverageId)};
+  }
   function finalStateOf(e, schemaVersion) { return isRuntimeIntegrityReport({schemaVersion}) ? e?.runtimeFinalState : e?.finalItemState; }
   function expectedCorrectionLock(result, needsCorrection, correction, finalState) {
     if (result.ok && !needsCorrection) return 'none';
@@ -252,7 +293,7 @@
       const coverageId = text(c.coverageId).trim();
       if (coverageId && !queue.some(x => x.coverageId === coverageId)) throw new Error('speaking correction 的 coverageId 無法對應本課。');
       if (isExecutionGateReport({schemaVersion})) {
-        if (!['retried', 'declined'].includes(c.resolution)) throw new Error('V2.25.4 speaking correction 必須記錄 retried 或 declined。');
+        if (!['retried', 'declined'].includes(c.resolution)) throw new Error('Speaking correction 必須記錄 retried 或 declined。');
         if (c.resolution === 'retried' && (c.learnerRetried !== true || c.retryLearnerFinished !== true || !['confirmed','likely'].includes(c.retryUtteranceReliability) || c.retryTranscriptionIssue !== false)) throw new Error('Retry 必須等 Learner 完整說完，並保留可靠的 retry evidence。');
         if (c.resolution === 'declined' && (c.learnerRetried !== false || !text(c.learnerDeclineWords).trim())) throw new Error('declined 必須保留 Learner 明確拒絕 Retry 的原話。');
       }
@@ -294,7 +335,8 @@
       const correction = speakingCorrections.find(c => c.coverageId === item.coverageId);
       const retryAccepted = correction?.resolution==='retried' ? retrySatisfiesItem(item,correction) : false;
       const correctionIssued=!!correction||(Array.isArray(e.currentItemStateHistory)&&e.currentItemStateHistory.includes('CORRECTION_REQUIRED')&&e.currentItemStateHistory.includes('AWAITING_RETRY'));
-      const serverTransition=decideCurrentItemTransition({kind:item.kind,learnerFinished:e.learnerFinished,hearingResolved:['clear','clarified'].includes(e.resolution?.hearing),targetOrTaskResolved:result.ok,importantCorrectionRequired:needsCorrection,correctionIssued,retryReceived:correction?.learnerRetried===true,retryFinished:correction?.retryLearnerFinished===true,retryAccepted,explicitDecline:correction?.resolution==='declined'});
+      const vocabularyOnly=isVocabularyOnlyReport(raw);
+      const serverTransition=decideCurrentItemTransition({kind:item.kind,learnerFinished:e.learnerFinished,hearingResolved:['clear','clarified'].includes(e.resolution?.hearing),targetOrTaskResolved:result.ok,importantCorrectionRequired:needsCorrection,correctionIssued,retryReceived:correction?.learnerRetried===true,retryFinished:correction?.retryLearnerFinished===true,retryAccepted,explicitDecline:correction?.resolution==='declined',allowCorrectionDecline:!vocabularyOnly});
       if (isExecutionGateReport(raw) && result.ok) {
         const correctionResolution = e.resolution?.correction;
         if (needsCorrection && (e.correctionRequired !== true || !correction || !['retried','declined'].includes(correction.resolution) || correctionResolution !== correction.resolution || (correction.resolution==='retried'&&!retryAccepted))) {
@@ -302,6 +344,7 @@
           issue(finalStateOf(e,raw.schemaVersion)==='AWAITING_RETRY'?'advanced_before_retry':'missing_required_correction',item,result.validationNote);
         }
         if (!needsCorrection && (e.correctionRequired !== false || correctionResolution !== 'not_needed')) result = {ok:false,remainingReason:'correction_unresolved',validationNote:'需明確記錄本項不需要 correction，或完成實際 correction。'};
+        if (vocabularyOnly && needsCorrection && correction?.resolution === 'declined') result = {ok:false,remainingReason:'correction_unresolved',validationNote:'Vocabulary-only Coverage 的重要錯誤需要 Learner 完成 Retry；declined 只能保存為未完成。'};
       }
       if (strict) {
         const stateProblem = runtimeStateCheck(item,e,result,allowedItem.queuePosition,needsCorrection,correction,raw.schemaVersion);
@@ -350,9 +393,10 @@
     }
     if(strict)for(const [coverageId,a] of allowed)if(!seen.has(coverageId)){const item=s.queue.find(x=>x.coverageId===coverageId);checks.push({coverageId,sourceVersion:a.sourceVersion,taskMode:item.taskMode,phaseId:'lesson_application',queuePosition:a.queuePosition,attemptSequence:null,status:'not_tested',newPrompt:'',learnerUtterance:'',utteranceReliability:'not_applicable',transcriptionIssue:false,learnerFinished:false,modelOnly:false,coachSuppliedAnswer:false,currentItemStateHistory:['PENDING'],...(integrity?{runtimeFinalState:'PENDING',evidenceValid:false,correctionLock:'none'}:{finalItemState:'PENDING'}),remainingReason:'not_asked',accuracy:item.kind==='grammar'?'not_tested':null,label:item.label,target:item.target,kind:item.kind,lessonId:item.lessonId,ok:false,validationNote:'本次尚未實際提問。'});}
     summarize(s);
-    const correctionLockCount=s.queue.filter(x=>!practiced(x)&&['required','awaiting_retry'].includes(x.correctionLock)).length;
-    const allEvidenceValid=s.completedCoverage.every(x=>x.evidence&&x.evidence.ok!==false)&&s.remainingCoverage.length===0&&correctionLockCount===0;
-    s.runtimeQueue={totalRequiredCoverage:s.queue.length,resolvedCoverage:s.completedCoverage.length,remainingCoverage:s.remainingCoverage.length,currentCoverageId:s.remainingCoverage[0]?.coverageId||null,currentRequiredItem:s.remainingCoverage[0]?.coverageId||null,correctionLockCount,allEvidenceValid,sessionState:s.remainingCoverage.length||correctionLockCount?'REQUIRED_PRACTICE':'FINAL_CHALLENGE'};
+    const vocabularyAudit=isVocabularyOnlyReport(raw)?fullVocabularyCoverageAudit(s):null;
+    const correctionLockCount=vocabularyAudit?.correctionLockCount??s.queue.filter(x=>!practiced(x)&&['required','awaiting_retry'].includes(x.correctionLock)).length;
+    const allEvidenceValid=vocabularyAudit?.allEvidenceValid??(s.completedCoverage.every(x=>x.evidence&&x.evidence.ok!==false)&&s.remainingCoverage.length===0&&correctionLockCount===0);
+    s.runtimeQueue={totalRequiredCoverage:vocabularyAudit?.totalRequiredCoverage??s.queue.length,resolvedCoverage:vocabularyAudit?.resolvedCoverage??s.completedCoverage.length,remainingCoverage:vocabularyAudit?.remainingCoverage??s.remainingCoverage.length,currentCoverageId:vocabularyAudit?.currentCoverageId??s.remainingCoverage[0]?.coverageId??null,currentRequiredItem:vocabularyAudit?.currentRequiredItem??s.remainingCoverage[0]?.coverageId??null,correctionLockCount,allEvidenceValid,sessionState:(vocabularyAudit?vocabularyAudit.remainingCoverage:s.remainingCoverage.length)||correctionLockCount?'REQUIRED_PRACTICE':'FINAL_CHALLENGE'};
     const rank={not_started:0,partial:1,completed:2};for(const phase of s.phaseProgress){const p=raw.phaseProgress.find(x=>x?.phaseId===phase.phaseId);if(p&&rank[p.status]!==undefined&&text(p.notes).trim()&&rank[p.status]>rank[phase.status])Object.assign(phase,{status:p.status,notes:p.notes});}
     const f=raw.finalChallenge||{},finalSequence=strict?f.attemptSequence:f.sequence,finalStarted=!!(text(f.newPrompt).trim()||text(f.learnerUtterance).trim()||Number.isSafeInteger(finalSequence));
     const currentEvidence=s.completedCoverage.filter(x=>x.evidence?.attemptId===raw.continuationAttemptId);
@@ -360,7 +404,8 @@
     const reliableFinal=text(f.newPrompt).trim()&&text(f.learnerUtterance).trim()&&['confirmed','likely'].includes(f.utteranceReliability)&&f.transcriptionIssue===false;
     const auditedIds=Array.isArray(f.auditedCoverageIds)?[...new Set(f.auditedCoverageIds)]:[];
     const runtimeAuditOK=!strict||(raw.runtimeQueue?.remainingCoverage===0&&raw.runtimeQueue?.currentCoverageId===null&&(raw.runtimeQueue?.currentRequiredItem===null||!integrity)&&(!integrity||raw.runtimeQueue?.correctionLockCount===0)&&raw.runtimeQueue?.sessionState==='FINAL_CHALLENGE');
-    const preFinalAuditOK=!isExecutionGateReport(raw)||(f.preFinalAuditPassed===true&&f.remainingCoverageBeforeChallenge===0&&auditedIds.length===s.queue.length&&s.queue.every(x=>auditedIds.includes(x.coverageId))&&runtimeAuditOK&&allEvidenceValid);
+    const requiredAuditItems=isVocabularyOnlyReport(raw)?s.queue.filter(x=>x.kind==='vocabulary'):s.queue;
+    const preFinalAuditOK=!isExecutionGateReport(raw)||(f.preFinalAuditPassed===true&&f.remainingCoverageBeforeChallenge===0&&auditedIds.length===requiredAuditItems.length&&requiredAuditItems.every(x=>auditedIds.includes(x.coverageId))&&runtimeAuditOK&&allEvidenceValid);
     const finalAuditOK=!integrity||f.finalAuditPassed===true;
     const finalCorrectionOK=!integrity||['not_needed','retried','declined'].includes(f.correction)&&f.correctionResolved===true;
     const independentFinal=integrity?f.independentProduction===true&&f.coachSuppliedAnswer===false:f.independentProduction!==false&&f.coachSuppliedAnswer!==true;
@@ -395,5 +440,5 @@
     const { attempts, ...rest } = s;
     return { ...rest, speakingSchemaVersion:SPEAKING_SCHEMA_VERSION, attemptCount: attempts.length, reports: attempts.map(a => a.report) };
   }
-  root.EnglishSpeakingQueue = { SCHEMA_VERSION:SPEAKING_SCHEMA_VERSION, PHASES, REASONS, ITEM_STATES, TERMINAL_ITEM_STATES, stable, version, isQueueReport, isSimplifiedReport, isExecutionGateReport, isCurrentItemReport, isRuntimeIntegrityReport, advanceRequiredQueue, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget, capitalizationChoice, detectImportantLanguageIssues, retrySatisfiesItem, decideCurrentItemTransition };
+  root.EnglishSpeakingQueue = { SCHEMA_VERSION:SPEAKING_SCHEMA_VERSION, PHASES, REASONS, ITEM_STATES, TERMINAL_ITEM_STATES, stable, version, isQueueReport, isSimplifiedReport, isExecutionGateReport, isCurrentItemReport, isRuntimeIntegrityReport, isVocabularyOnlyReport, advanceRequiredQueue, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget, capitalizationChoice, detectImportantLanguageIssues, validateCorrection, retrySatisfiesItem, decideCurrentItemTransition, fullVocabularyCoverageAudit };
 })(globalThis);

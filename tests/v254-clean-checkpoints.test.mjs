@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import '../src/speaking-queue.js';
 
 const Q=globalThis.EnglishSpeakingQueue;
-const V=Q.SCHEMA_VERSION;
+const V='2.25.4';
 const prompt=fs.readFileSync(new URL('../src/speaking-client.js',import.meta.url),'utf8');
 const lesson={id:'clean-254',title:'Family',curriculum:{
   mainVocabulary:['niece','ancestor','descendant','sibling','spouse'].map(term=>({term})),
@@ -98,7 +98,7 @@ test('02 Questions stay simple and I do not understand simplifies the same task'
 });
 test('03 Important correction waits for a complete Retry before advance',()=>{
   assert(prompt.includes('Then WAIT for the whole Retry'));
-  assert(prompt.includes('correctionLock must finish as retried or explicitly declined before advance'));
+  assert(prompt.includes('correctionLock must finish as retried before Coverage resolves'));
 });
 test('04 Unclear hearing asks for confirmation and never guesses meaning',()=>{
   assert(prompt.includes('HARD RULE — NO EVALUATION WITHOUT HEARING CONFIRMATION'));
@@ -130,10 +130,10 @@ test('07 my mom plus Capital is incorrect and remains locked until correction Re
   assert.equal(out.state.runtimeQueue.currentCoverageId,item.coverageId);
   assert.equal(out.report.coverageChecks.find(x=>x.coverageId===item.coverageId).accuracy,'incorrect');
 });
-test('08 Every Grammar coverage ID is independent',()=>{
+test('08 Legacy V2.25.4 Grammar coverage IDs remain independently parseable',()=>{
   const grammar=items.filter(x=>x.kind==='grammar');
   assert.equal(new Set(grammar.map(x=>x.coverageId)).size,3);
-  assert(prompt.includes('The three Grammar IDs are three separate tasks.'));
+  assert(!prompt.includes('The three Grammar IDs are three separate tasks.'));
 });
 test('09 One remaining Coverage item blocks Final Challenge and completion',()=>{
   const rows=items.slice(0,7).map(evidence);

@@ -1,4 +1,4 @@
-# Hanne's English OS V2.25.4
+# Hanne's English OS V2.25.5
 
 Speaking Required Coverage、自然訂正循環、伺服器驗證及未完成 Session 續練。
 

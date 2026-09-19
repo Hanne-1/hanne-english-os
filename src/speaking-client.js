@@ -1,4 +1,4 @@
-// Clean V2.25.4 UI. V2.25.3 voice behavior with isolated report generation.
+// V2.25.5 Vocabulary-only Speaking UI with isolated report generation.
 const SPEAKING_SCHEMA_VERSION = EnglishSpeakingQueue.SCHEMA_VERSION;
 var speakingQueueCache = {}, speakingQueueBusy = false, speakingQueueGeneration = 0;
 const pendingSpeakingText = localStorage.getItem('hanne_speaking_pending_report_v224');
@@ -17,10 +17,10 @@ function renderSpeakingQueuePanel() {
   const c = s.sessionCoverage;
   const reason = { not_asked: '尚未提問', no_learner_response: '尚無完整回答', unreliable_transcript: '語音待確認', hearing_unresolved: '需先確認聽辨', target_not_produced: '尚未可靠產出目標', correction_unresolved: '訂正／Retry 尚未完成', queue_order_violation: '不是目前第一個待完成項目', explicit_skip: '已明確跳過，仍待完成', wrong_task_mode: '需對應的任務／新版本', coach_only_target: '回答中未產出目標字', model_only: '需自己回答', session_stopped: '停止前尚未練習' };
   const done = x => ['PRACTICED','PRACTICED_RELIABLY'].includes(x.state);
-  const group = (kind,title) => `<div class="item"><b>${title}</b><ul>${s.queue.filter(x=>x.kind===kind).map(x=>`<li><b>${done(x)?'✓':'○'} ${esc(x.label)}</b>${!done(x)?' — '+esc(reason[x.remainingReason]||'待練'):x.evidence?.needsReview?' — 已練，內容需要 Review':''}${x.validationNote?`<p class="tiny">${esc(x.validationNote)}</p>`:''}</li>`).join('')}</ul></div>`;
+  const group = (kind,title) => { const rows=s.queue.filter(x=>x.kind===kind); return rows.length?`<div class="item"><b>${title}</b><ul>${rows.map(x=>`<li><b>${done(x)?'✓':'○'} ${esc(x.label)}</b>${!done(x)?' — '+esc(reason[x.remainingReason]||'待練'):x.evidence?.needsReview?' — 已練，內容需要 Review':''}${x.validationNote?`<p class="tiny">${esc(x.validationNote)}</p>`:''}</li>`).join('')}</ul></div>`:''; };
   const latest = (s.reports || []).at(-1), corrections = latest?.speakingCorrections || [];
   const correctionHTML = corrections.length ? `<div class="teaching-section"><h4>Corrections from this session</h4>${corrections.map(x=>`<div class="item"><p><b>${esc(x.original)}</b><br>→ ${esc(x.better)}</p><p class="tiny">${esc(x.reason)}${x.learnerRetried?' · 已重新作答':' · 尚未重新作答'}</p></div>`).join('')}</div>` : '';
-  box.innerHTML = `<div class="note"><h3>Today's Speaking</h3>${group('vocabulary','Vocabulary')}${group('grammar','Grammar')}<p><b>Coverage: ${c.practiced} / ${c.total}</b> · ${c.remaining} 項剩餘</p><p>${s.completed?'Vocabulary、Grammar 與 Final Challenge 已完成。':c.remaining?'下個練習：'+esc(s.remainingCoverage[0].label):'Required Coverage 已練齊，接著完成 Final Challenge。'}</p><p class="tiny">${esc(s.lessonTitle)} · Previous corrections 與 spelling 只作為 Coach 觀察重點，不會增加 Required Coverage。</p>${correctionHTML}</div>`;
+  box.innerHTML = `<div class="note"><h3>Today's Speaking</h3>${group('vocabulary','Vocabulary')}<p><b>Vocabulary Coverage: ${c.practiced} / ${c.total}</b> · ${c.remaining} 項剩餘</p><p>${s.completed?'Vocabulary 與 Final Challenge 已完成。':c.remaining?'下個單字：'+esc(s.remainingCoverage[0].label):'Vocabulary Coverage 已練齊，接著完成 Final Challenge。'}</p><p class="tiny">${esc(s.lessonTitle)} · Grammar、Previous corrections 與 spelling 只作為教材／Review Context，不會增加 Speaking Required Coverage。</p>${correctionHTML}</div>`;
 }
 async function speakingQueueRequest(input) {
   const response = await fetch(CLOUD_URL + '/functions/v1/speaking-queue', { method: 'POST', headers: { apikey: CLOUD_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
@@ -102,7 +102,6 @@ function formatSpeakingBrief(data, id, s) {
   const compact = x => x ? {
     coverageId:x.coverageId, sourceVersion:x.sourceVersion, kind:x.kind,
     target:x.target, label:x.label, taskMode:x.taskMode, state:x.state,
-    ...(x.evidenceType ? {evidenceType:x.evidenceType, grammarTask:x.grammarTask, expectedAnswer:x.expectedAnswer} : {}),
     ...(x.remainingReason ? {remainingReason:x.remainingReason} : {})
   } : null;
   const schema = {
@@ -115,7 +114,7 @@ function formatSpeakingBrief(data, id, s) {
     phaseProgress:s.phaseProgress.map(p=>({...p})),
     coverageChecks:[{
       coverageId:'COPY_EXACT_ID', sourceVersion:'COPY_EXACT_VERSION',
-      taskMode:'vocabulary_production|grammar_application',
+      taskMode:'vocabulary_production',
       phaseId:'warmup|lesson_application|knowledge_integration',
       queuePosition:1, attemptSequence:1, status:'practiced|not_tested',
       newPrompt:'ACTUAL QUESTION', learnerUtterance:'ACTUAL COMPLETE RESPONSE',
@@ -135,10 +134,7 @@ function formatSpeakingBrief(data, id, s) {
       runtimeFinalState:'RESOLVED', evidenceValid:true,
       correctionLock:'none|required|awaiting_retry|retried|declined',
       correctionRequired:false, productionQuality:'acceptable|needs_review',
-      grammarRuleId:'ONLY_FOR_GRAMMAR', grammarTask:'COPY_ITEM_GRAMMAR_TASK',
-      caseExample:'EXACT_EXAMPLE_IN_QUESTION',
-      accuracy:'correct|incorrect|not_tested|null', needsReview:false,
-      ruleApplication:'ONLY_FOR_GENERAL_GRAMMAR', praiseGiven:false,
+      accuracy:null, needsReview:false, praiseGiven:false,
       notes:'ACTUAL EVIDENCE',
       remainingReason:'not_asked|hearing_unresolved|target_not_produced|correction_unresolved|explicit_skip'
     }],
@@ -209,7 +205,8 @@ BRIEF_LOADED → TEXT_READY → VOICE_ENTERED → SESSION_ACTIVE → FIRST_QUEST
 Never repeat the text-mode message in Voice.
 
 SERVER-CONFIRMED REQUIRED COVERAGE
-Derive TOTAL REQUIRED COVERAGE dynamically; never hardcode 8. For example, 6 Vocabulary + 4 Grammar has 10.
+Required Coverage is Vocabulary only. Grammar remains in the lesson but is never a Speaking queue item or completion gate.
+Derive TOTAL REQUIRED COVERAGE dynamically from this session's Vocabulary queue; never hardcode 5. A future lesson with 7 Speaking Vocabulary has TOTAL REQUIRED COVERAGE: 7.
 TOTAL REQUIRED COVERAGE: ${s.queue.length}
 CURRENT SESSION COMPLETED: ${s.completedCoverage.length}
 REMAINING: ${remaining.length}
@@ -223,24 +220,23 @@ PHASE PROGRESS: ${JSON.stringify(s.phaseProgress)}
 ${s.phaseProgress.find(p=>p.phaseId==='warmup').status==='completed'?'Do NOT restart warm-up. Resume the FIRST unresolved Required item.':'Use at most one short warm-up, then begin the FIRST unresolved Required item.'}
 
 CANONICAL RUNTIME LOOP — THE ONLY QUEUE FLOW
-1. Select the FIRST unresolved Required item.
+1. Select the FIRST unresolved Vocabulary item.
 2. Ask one simple question.
 3. WAIT until the learner has finished.
 4. Confirm hearing if needed.
-5. Confirm the learner actually completed this target/task.
-6. Correct only an important error; if corrected, WAIT for Retry or explicit refusal.
+5. Confirm the learner independently produced the target.
+6. Correct only an important error; if corrected, WAIT for the Learner's complete Retry.
 7. Update evidence and advance only after the current item is resolved.
 8. Repeat from the new FIRST unresolved item.
 
 Exactly one item is current. An unresolved current item blocks every later item.
-Allowed runtime states: PENDING, ACTIVE, AWAITING_LEARNER, HEARING_UNRESOLVED, TARGET_UNRESOLVED, TASK_UNRESOLVED, CORRECTION_REQUIRED, AWAITING_RETRY, RESOLVED, RESOLVED_WITH_DECLINED_CORRECTION, EXPLICITLY_SKIPPED, SESSION_STOPPED.
-Only RESOLVED, RESOLVED_WITH_DECLINED_CORRECTION, or EXPLICITLY_SKIPPED may advance the queue.
+Allowed active states: PENDING, ACTIVE, AWAITING_LEARNER, HEARING_UNRESOLVED, TARGET_UNRESOLVED, CORRECTION_REQUIRED, AWAITING_RETRY, RESOLVED, EXPLICITLY_SKIPPED, SESSION_STOPPED.
+Only RESOLVED or EXPLICITLY_SKIPPED may move the conversation forward. An explicitly skipped word remains incomplete and still blocks Final Challenge.
 Maintain queuePosition as the fixed lesson order. attemptSequence is the real order asked in this attempt.
 
 SUCCESS GATES
 Vocabulary: hearing is clear, the learner finishes, and the learner actually says the required target. Meaning alone, a target only in the question, or the Coach's answer is not evidence.
-Grammar: ask the exact independent Grammar coverageId and use its server-provided expectedAnswer as the source of truth. The three Grammar IDs are three separate tasks. Completing one never completes its neighbors.
-Important correction: correctionLock must finish as retried or explicitly declined before advance. Small style improvements may be feedback and do not block.
+Important correction: correctionLock must finish as retried before Coverage resolves. A refusal may be saved as partial progress but does not resolve the Vocabulary item. Small style improvements may be feedback and do not block.
 Final Challenge is permitted ONLY when remainingCoverage === 0, currentRequiredItem === null, correctionLockCount === 0, allEvidenceValid === true, and the Pre-Final audit passes. Otherwise Final Challenge is BLOCKED.
 Normal completion requires a complete Final Challenge, its feedback/correction, and a final audit. Never claim completion from conversation length or general performance.
 
@@ -248,11 +244,11 @@ MANDATORY DECISION BEFORE EVERY ADVANCE
 Target produced is only the Target Gate. It never resolves Coverage by itself.
 After the learner's complete turn, silently decide in this exact order:
 1. Is hearing clear? If no, clarify and WAIT.
-2. Did the learner produce the exact target/task? If no, elicit it and WAIT.
+2. Did the learner independently produce the exact Vocabulary target? If no, elicit it and WAIT.
 3. Is there an important language error? Check every category below.
 4. If yes: set CORRECTION_REQUIRED, give My sentence / Better / Why, say “Now try it again,” set AWAITING_RETRY, and WAIT.
 5. A recast, paraphrase, praise, “got it,” or Coach model is never Retry evidence.
-6. Advance only after a complete acceptable Learner Retry, or an explicit refusal.
+6. Advance only after a complete acceptable Learner Retry.
 
 BLOCKING CORRECTION CATEGORIES
 missing be verb; wrong tense; wrong verb form; third-person singular; important article/determiner; singular/plural; important preposition; incomplete core sentence structure; target misuse; meaning-changing error; recurring important grammar weakness.
@@ -283,7 +279,6 @@ HEARING CONFIRMATION
 HARD RULE — NO EVALUATION WITHOUT HEARING CONFIRMATION.
 If audio/transcript is unclear, ask only the smallest confirmation, then WAIT:
 “Sorry, did you say ‘descendant’?” / “Could you say that word one more time?”
-For Capital → “Capitalist”, ask “Did you mean capital?”
 A speech-recognition failure is not a learner error. Never reconstruct or semantically guess damaged audio. Keep hearing unresolved and evidenceValid=false until confirmed.
 
 TARGET AND SUPPORT
@@ -305,7 +300,7 @@ Why: <short reason; Traditional Chinese may help>
 Now try it again.
 Then WAIT for the whole Retry. Do not move on because the learner understood the explanation.
 Recasting the sentence yourself does not complete Correction. The Learner must say the corrected form.
-Before correcting, compare Better with the actual utterance. If they are already the same, retract the correction, do not create a learner weakness, and optionally report false_correction.
+Before correcting: capture the actual utterance, identify the exact error span, create Better, compare Original with Better, and confirm the claimed error really exists. If the claimed error is absent or Original and Better are effectively the same, DO NOT CORRECT. Report coachExecutionIssue=false_correction; do not create a learner weakness, correction record, or recurring error.
 Praise must never replace correction. “Great job! Next question.” is prohibited while an important error is unresolved.
 For a spouse example, “We don't have married” needs “We're not married”; “if my boyfriend marry me” needs “if my boyfriend marries me”. Then say “Now try it again.”
 
@@ -316,17 +311,9 @@ ordinary Next is never explicit Skip. Only direct words such as “Skip this wor
 Stop only on an explicit learner request. Time is recorded, never a limit; 8–12 minutes is an estimate, and 18 or 25 minutes is valid.
 
 COVERAGE QUESTIONS AND FINAL
-If asked “Did we practice everything?”, “Have you lost any words?”, or「有沒有漏？」, immediately audit the full Required queue with fullQueueAudit(). Never ask the Learner which word was missed.
-If Grammar completed is 0/3, say: “We haven't practiced the grammar part yet. We still have three grammar items left.”
-If Grammar completed is 1/3, say: “We practiced one grammar rule. We still have two left.”
-When all Required items pass, run the Pre-Final audit. Then ask one Final Challenge for 2–3 connected sentences using 2–3 suitable targets. WAIT, give feedback, handle any important correction and Retry, then run the Final audit.
-
-VOCABULARY → GRAMMAR TRANSITION
-After the fifth Vocabulary resolves, recompute FIRST unresolved. It must be Grammar 1, never wrap-up, optional conversation, or Final Challenge.
-Grammar 1 (title_with_name, expectedAnswer=capital): ask an independent question such as “In ‘Aunt Mary,’ should ‘Aunt’ start with a capital letter or a lowercase letter?”
-After Grammar 1 resolves, ask Grammar 2 (title_replacing_name, expectedAnswer=capital) with a new independent example.
-After Grammar 2 resolves, ask Grammar 3 (possessive_title, expectedAnswer=lowercase): “In ‘my mom,’ should ‘mom’ start with a capital letter or a lowercase letter?”
-If the Learner answers Capital for “my mom,” it is incorrect. Explain that a title after a possessive is lowercase, request “Lowercase” as Retry, and WAIT. “Next” or “Keep going” continues Required Grammar; it never skips it.
+If asked “Did we practice everything?”, “Have you lost any words?”, or「有沒有漏？」, immediately run fullVocabularyCoverageAudit(). Never ask the Learner which word was missed.
+After the last Vocabulary appears resolved, audit every required Vocabulary ID. Require resolvedCoverage === totalRequiredCoverage, remainingCoverage === 0, correctionLockCount === 0, and allEvidenceValid === true. If any check fails, return to the FIRST unresolved Vocabulary.
+Only after the Vocabulary audit passes, ask one Final Challenge for 2–3 connected sentences using 2–3 suitable Vocabulary targets. WAIT, give feedback, handle any important correction and Learner Retry, then run the Final audit.
 
 REVIEW CONTEXT — COACHING PRIORITY ONLY, NEVER REQUIRED COVERAGE
 Use this only when it fits naturally. It never adds queue items or completion gates:
@@ -339,9 +326,8 @@ Generate this only after Voice ends. Return one complete SPEAKING_REPORT JSON us
 
 Report rules:
 - schemaVersion must be ${SPEAKING_SCHEMA_VERSION}.
-- Unasked item: status=not_tested, attemptSequence=null, runtimeFinalState=PENDING, evidenceValid=false, correctionLock=none, accuracy=not_tested for Grammar.
-- Grammar accuracy is correct or incorrect only after an actual reliable answer; otherwise not_tested or null.
-- Use the server expectedAnswer, never capitalization appearance in ASR text.
+- coverageChecks contains only the server-provided Vocabulary Required Coverage IDs. Do not add Grammar not_tested rows.
+- Unasked Vocabulary: status=not_tested, attemptSequence=null, runtimeFinalState=PENDING, evidenceValid=false, correctionLock=none.
 - Preserve exact queuePosition and actual attemptSequence.
 - For unclear hearing: evidenceValid=false; semanticGuessUsed must remain false for valid evidence.
 - speakingCorrections contains observed important corrections only. A false/retracted correction must not become learner weakness.

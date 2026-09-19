@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import '../src/speaking-queue.js';
 
 const Q=globalThis.EnglishSpeakingQueue;
-const V=Q.SCHEMA_VERSION;
+const V='2.25.4';
 const lesson={id:'targeted-254',title:'Family',curriculum:{
   mainVocabulary:['niece','ancestor','descendant','sibling','spouse'].map(term=>({term})),
   extendedVocabulary:[],

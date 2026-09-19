@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Hanne's English OS V2.25.4</title>
+<title>Hanne's English OS V2.25.5</title>
 <style>
 :root{--bg:#f7f5f1;--card:#fffefc;--ink:#39373d;--muted:#85818a;--lav:#8f86a5;--lav2:#eeeaf2;--blue:#edf3f6;--rose:#b18383;--line:#e5e0dc;--green:#657b69;--greenbg:#edf3ee}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",sans-serif}
@@ -167,7 +167,7 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
 
 </style>
 </head><body><div class="app">
-<div class="top"><div><h1>Hanne's English OS</h1><div class="sub">V2.25.4 · Speaking Clean Rebuild</div></div><div id="syncStatus" class="pill">Sync connecting…</div></div>
+<div class="top"><div><h1>Hanne's English OS</h1><div class="sub">V2.25.5 · Speaking Vocabulary-only</div></div><div id="syncStatus" class="pill">Sync connecting…</div></div>
 <div class="nav"><button data-page="dashboard" class="active">Dashboard</button><button data-page="materials">Materials</button><button data-page="add">＋ Add Material</button><button data-page="learn">Learning Session</button><button data-page="correction">Correction</button><button data-page="review">Review</button><button data-page="speaking">Speaking</button></div>
 
 <div class="mobile-nav"><label for="mobilePage">前往頁面</label><select id="mobilePage" aria-label="主要導覽"><option value="dashboard">首頁 · Dashboard</option><option value="materials">教材 · Materials</option><option value="add">新增教材 · Add Material</option><option value="learn">學習 · Learning</option><option value="correction">訂正 · Correction</option><option value="review">複習 · Review</option><option value="speaking">口說 · Speaking</option></select></div>
@@ -336,7 +336,7 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
 /* Shared, deterministic Speaking runtime rules. New sessions use one schema source. */
 (function (root) {
   'use strict';
-  const SPEAKING_SCHEMA_VERSION = '2.25.4';
+  const SPEAKING_SCHEMA_VERSION = '2.25.5';
   const PHASES = ['warmup', 'lesson_application', 'knowledge_integration', 'final_challenge'];
   const REASONS = ['not_asked', 'no_learner_response', 'unreliable_transcript', 'hearing_unresolved', 'target_not_produced', 'correction_unresolved', 'queue_order_violation', 'explicit_skip', 'wrong_task_mode', 'coach_only_target', 'model_only', 'session_stopped'];
   const ITEM_STATES = ['PENDING', 'ACTIVE', 'AWAITING_LEARNER', 'HEARING_UNRESOLVED', 'TARGET_UNRESOLVED', 'TASK_UNRESOLVED', 'CORRECTION_REQUIRED', 'AWAITING_RETRY', 'RESOLVED', 'RESOLVED_WITH_DECLINED_CORRECTION', 'EXPLICITLY_SKIPPED', 'SESSION_STOPPED'];
@@ -357,10 +357,11 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
   function isExecutionGateReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 2)))); }
   function isCurrentItemReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 3)))); }
   function isRuntimeIntegrityReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 4)))); }
-  function schemaClass(raw) { return !isSimplifiedReport(raw) ? 'legacy' : isRuntimeIntegrityReport(raw) ? 'runtime_integrity' : isCurrentItemReport(raw) ? 'current_item_lock' : isExecutionGateReport(raw) ? 'execution_gates' : 'simplified'; }
+  function isVocabularyOnlyReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 5)))); }
+  function schemaClass(raw) { return !isSimplifiedReport(raw) ? 'legacy' : isVocabularyOnlyReport(raw) ? 'vocabulary_only' : isRuntimeIntegrityReport(raw) ? 'runtime_integrity' : isCurrentItemReport(raw) ? 'current_item_lock' : isExecutionGateReport(raw) ? 'execution_gates' : 'simplified'; }
   function inventory(lesson, corrections = [], options = {}) {
     const schemaVersion = typeof options === 'string' ? options : options.schemaVersion || SPEAKING_SCHEMA_VERSION;
-    const legacy = !atLeast(schemaVersion, 2, 25);
+    const legacy = !atLeast(schemaVersion, 2, 25), vocabularyOnly = isVocabularyOnlyReport({schemaVersion});
     const c = lesson.curriculum || {}, items = new Map();
     function add(kind, key, target, label, taskMode, source, extra = {}) {
       if (!text(key).trim()) return;
@@ -368,13 +369,13 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
       items.set(coverageId, { coverageId, sourceVersion: version({ policy: '2.24.0', taskMode, source }), lessonId: lesson.id, kind, target, label, taskMode, ...extra });
     }
     [...(c.mainVocabulary || []), ...(c.extendedVocabulary || [])].filter(x => !x.excludeFromPractice).forEach(x => add('vocabulary', x.term, x.term, x.term, 'vocabulary_production', { term: x.term, meaning: x.meaning || '', partOfSpeech: x.partOfSpeech || x.pos || '' }));
-    (c.grammar || []).filter(x => !x.excludeFromPractice).forEach(x => {
-      const rule = typeof x === 'string' ? x : x.rule || x.title || x.name || '';
-      const capitalization = /capital|大寫|小寫/i.test(rule);
-      const grammarTask = !capitalization ? 'rule_application' : /誰的|所有格|possessive/i.test(rule) ? 'possessive_title' : /代替|replac|instead of/i.test(rule) ? 'title_replacing_name' : /名字|姓名|name/i.test(rule) ? 'title_with_name' : 'capitalization_decision';
-      const expectedAnswer = grammarTask === 'possessive_title' ? 'lowercase' : capitalization ? 'capital' : null;
-      add('grammar', rule, rule, rule, 'grammar_application', x, { evidenceType: capitalization ? 'capitalization_decision' : 'rule_application', grammarTask, expectedAnswer, grammarSource: x });
-    });
+    if (!vocabularyOnly) (c.grammar || []).filter(x => !x.excludeFromPractice).forEach(x => {
+        const rule = typeof x === 'string' ? x : x.rule || x.title || x.name || '';
+        const capitalization = /capital|大寫|小寫/i.test(rule);
+        const grammarTask = !capitalization ? 'rule_application' : /誰的|所有格|possessive/i.test(rule) ? 'possessive_title' : /代替|replac|instead of/i.test(rule) ? 'title_replacing_name' : /名字|姓名|name/i.test(rule) ? 'title_with_name' : 'capitalization_decision';
+        const expectedAnswer = grammarTask === 'possessive_title' ? 'lowercase' : capitalization ? 'capital' : null;
+        add('grammar', rule, rule, rule, 'grammar_application', x, { evidenceType: capitalization ? 'capitalization_decision' : 'rule_application', grammarTask, expectedAnswer, grammarSource: x });
+      });
     if (legacy) corrections.filter(x => x.lessonId === lesson.id).forEach(x => add('correction', x.correctionId, x.target, x.target + ' · ' + (x.round || x.component) + ' 訂正', x.round === 'spelling' ? 'spelling_recall' : 'correction_transfer', { prompt: x.prompt, answerStatus: x.answerStatus, originalAnswer: x.originalAnswer, gptSuggestedAnswer: x.gptSuggestedAnswer, learnerCorrection: x.learnerCorrection, round: x.round, component: x.component }, { correctionId: x.correctionId, component: x.component, sourcePrompt: x.prompt }));
     return [...items.values()];
   }
@@ -394,21 +395,31 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
     const s = previous ? clone(previous) : { ...identity, schemaVersion, attempts: [], phaseProgress: PHASES.map(phaseId => ({ phaseId, status: 'not_started', notes: '' })), finalChallengeStatus: null, completed: false, osVerifiedCompleted: false };
     const old = new Map((s.queue || []).map(x => [x.coverageId, x]));
     const newIds = new Set(items.map(x => x.coverageId));
-    const requiredChanged = !!previous && (items.some(x => !old.has(x.coverageId) || old.get(x.coverageId).sourceVersion !== x.sourceVersion) || (s.queue || []).some(x => ['vocabulary', 'grammar'].includes(x.kind) && !newIds.has(x.coverageId)));
+    const addedOrChanged = !!previous && items.some(x => !old.has(x.coverageId) || old.get(x.coverageId).sourceVersion !== x.sourceVersion);
+    const removedRequired = previous ? (s.queue || []).filter(x => ['vocabulary', 'grammar'].includes(x.kind) && !newIds.has(x.coverageId)) : [];
+    const requiredChanged = !!previous && (addedOrChanged || removedRequired.length > 0);
+    const completedVocabularyOnlyMigration = !!previous?.completed && isVocabularyOnlyReport({schemaVersion}) && !addedOrChanged && removedRequired.length > 0 && removedRequired.every(x => x.kind === 'grammar');
     s.queue = items.map(item => {
       const prior = old.get(item.coverageId);
       if (prior?.sourceVersion === item.sourceVersion) return { ...prior, ...item, state: practiced(prior) ? 'PRACTICED' : 'NOT_YET_PRACTICED' };
       return { ...item, state: 'NOT_YET_PRACTICED', remainingReason: 'not_asked', validationNote: prior ? '教材已更新，舊證據不適用。' : '' };
     });
     const previousSchemaVersion = text(s.schemaVersion);
-    s.schemaVersion = previous?.completed ? previousSchemaVersion || schemaVersion : schemaVersion;
+    s.schemaVersion = completedVocabularyOnlyMigration ? schemaVersion : previous?.completed ? previousSchemaVersion || schemaVersion : schemaVersion;
     if (previous && !previous.completed && previousSchemaVersion && previousSchemaVersion !== schemaVersion) s.migrationMetadata = { strategy:'preserve_verified_progress_reset_active_attempt', fromSchemaVersion:previousSchemaVersion, toSchemaVersion:schemaVersion, migrationStage:'reconcile' };
-    if (requiredChanged) {
+    if (requiredChanged && !completedVocabularyOnlyMigration) {
       s.completed = s.osVerifiedCompleted = false; s.finalChallengeStatus = null;
       s.phaseProgress = s.phaseProgress.map(p => p.phaseId === 'final_challenge' ? { ...p, status: 'not_started', notes: '教材更新後需重新完成 Final Challenge。' } : p);
       s.activeAttempt = null;
     }
-    return summarize(s);
+    summarize(s);
+    if(completedVocabularyOnlyMigration){
+      const audit=fullVocabularyCoverageAudit(s);
+      s.runtimeQueue={...audit,sessionState:s.completed?'COMPLETED':audit.passed?'FINAL_CHALLENGE':'REQUIRED_PRACTICE'};
+      delete s.runtimeQueue.passed;delete s.runtimeQueue.auditedCoverageIds;
+      s.migrationMetadata={strategy:'remove_grammar_from_speaking_coverage',fromSchemaVersion:previousSchemaVersion,toSchemaVersion:schemaVersion,migrationStage:'reconcile'};
+    }
+    return s;
   }
   const words = s => text(s).toLowerCase().normalize('NFKC').match(/[a-z]+(?:['’][a-z]+)?/g) || [];
   function containsTarget(utterance, target) {
@@ -435,6 +446,11 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
       add('incomplete_core_sentence_structure',fixed,'英文名詞片語使用 a + very + adjective + noun。');
       better=fixed;
     }
+    if(/\b(is|was)\s+(very\s+)?kind\s+(girl|boy|person|woman|man)\b/i.test(better)){
+      const fixed=better.replace(/\b(is|was)\s+(very\s+)?kind\s+(girl|boy|person|woman|man)\b/i,(_,verb,very,noun)=>`${verb} a ${very||''}kind ${noun}`);
+      add('important_article_determiner',fixed,'單數可數名詞片語需要 a。');
+      better=fixed;
+    }
     if(/\b(?:my\s+)?niece\s+(?:is\s+)?(?:about\s+)?\d+\s+years?\s+old\b/i.test(better)&&!/\bniece\s+is\b/i.test(better)){
       const fixed=better.replace(/\b(my\s+niece|niece)\s+((?:about\s+)?\d+\s+years?\s+old)\b/i,'$1 is $2');
       add('missing_be_verb',fixed,'年齡句需要 be 動詞 is。');
@@ -449,6 +465,16 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
     if(target==='ancestor'&&/\bin\s+market\b/i.test(better)){
       const fixed=better.replace(/\bin\s+market\b/i,'in the market');
       add('important_article_preposition',fixed,'這個情境使用 in the market。');
+      better=fixed;
+    }
+    if(target==='descendant'&&/\bis\s+descendant\s+of\b/i.test(better)){
+      const fixed=better.replace(/\bis\s+descendant\s+of\b/i,'is a descendant of');
+      add('important_article_determiner',fixed,'descendant 是單數可數名詞，這裡需要 a descendant of。');
+      better=fixed;
+    }
+    if(target==='spouse'&&/\b(boyfriend|girlfriend|partner|he|she)\s+marry\b/i.test(better)){
+      const fixed=better.replace(/\b(boyfriend|girlfriend|partner|he|she)\s+marry\b/i,'$1 marries');
+      add('third_person_singular',fixed,'第三人稱單數現在式使用 marries。');
       better=fixed;
     }
     if(target&&new RegExp('\\b(?:two|three|four|five|six|seven|eight|nine|ten)\\s+'+target.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i').test(better)){
@@ -468,7 +494,7 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
     if(input.hearingResolved!==true)return {runtimeState:'HEARING_UNRESOLVED',correctionLock:'none',queueAdvance:false,coachAction:'CLARIFY_HEARING'};
     if(input.targetOrTaskResolved!==true)return {runtimeState:input.kind==='grammar'?'TASK_UNRESOLVED':'TARGET_UNRESOLVED',correctionLock:'none',queueAdvance:false,coachAction:'ELICIT_CURRENT'};
     if(input.importantCorrectionRequired===true){
-      if(input.explicitDecline===true)return {runtimeState:'RESOLVED_WITH_DECLINED_CORRECTION',correctionLock:'declined',queueAdvance:true,coachAction:'ADVANCE'};
+      if(input.explicitDecline===true&&input.allowCorrectionDecline!==false)return {runtimeState:'RESOLVED_WITH_DECLINED_CORRECTION',correctionLock:'declined',queueAdvance:true,coachAction:'ADVANCE'};
       if(input.correctionIssued!==true)return {runtimeState:'CORRECTION_REQUIRED',correctionLock:'required',queueAdvance:false,coachAction:'CORRECT_AND_REQUEST_RETRY'};
       if(input.retryReceived!==true||input.retryFinished!==true||input.retryAccepted!==true)return {runtimeState:'AWAITING_RETRY',correctionLock:'awaiting_retry',queueAdvance:false,coachAction:'WAIT_FOR_RETRY'};
       return {runtimeState:'RESOLVED',correctionLock:'retried',queueAdvance:true,coachAction:'ADVANCE'};
@@ -483,7 +509,22 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
     return true;
   }
   function normalizedSentence(value) { return text(value).toLowerCase().normalize('NFKC').replace(/[\p{P}\p{S}]+/gu,' ').replace(/\s+/g,' ').trim(); }
-  function isFalseCorrection(c) { return !!c && normalizedSentence(c.original) === normalizedSentence(c.better); }
+  function validateCorrection(c) {
+    const original=normalizedSentence(c?.original), better=normalizedSentence(c?.better);
+    if(!original||!better)return {valid:false,issue:'missing_correction_text',changedOriginal:[],changedBetter:[]};
+    const originalWords=original.split(' '),betterWords=better.split(' '),originalSet=new Set(originalWords),betterSet=new Set(betterWords);
+    const changedOriginal=originalWords.filter(x=>!betterSet.has(x)),changedBetter=betterWords.filter(x=>!originalSet.has(x));
+    const valid=original!==better;
+    return {valid,issue:valid?'': 'false_correction',changedOriginal,changedBetter};
+  }
+  function isFalseCorrection(c) { return !!c && !validateCorrection(c).valid; }
+  function fullVocabularyCoverageAudit(s) {
+    const required=(s?.queue||[]).filter(x=>x.kind==='vocabulary');
+    const resolved=required.filter(practiced),remaining=required.filter(x=>!practiced(x));
+    const correctionLockCount=required.filter(x=>!practiced(x)&&['required','awaiting_retry'].includes(x.correctionLock)).length;
+    const allEvidenceValid=resolved.every(x=>x.evidence&&x.evidence.ok!==false&&x.evidence.evidenceValid!==false)&&remaining.length===0&&correctionLockCount===0;
+    return {totalRequiredCoverage:required.length,resolvedCoverage:resolved.length,remainingCoverage:remaining.length,currentCoverageId:remaining[0]?.coverageId||null,currentRequiredItem:remaining[0]?.coverageId||null,correctionLockCount,allEvidenceValid,passed:required.length>0&&remaining.length===0&&correctionLockCount===0&&allEvidenceValid,auditedCoverageIds:required.map(x=>x.coverageId)};
+  }
   function finalStateOf(e, schemaVersion) { return isRuntimeIntegrityReport({schemaVersion}) ? e?.runtimeFinalState : e?.finalItemState; }
   function expectedCorrectionLock(result, needsCorrection, correction, finalState) {
     if (result.ok && !needsCorrection) return 'none';
@@ -587,7 +628,7 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
       const coverageId = text(c.coverageId).trim();
       if (coverageId && !queue.some(x => x.coverageId === coverageId)) throw new Error('speaking correction 的 coverageId 無法對應本課。');
       if (isExecutionGateReport({schemaVersion})) {
-        if (!['retried', 'declined'].includes(c.resolution)) throw new Error('V2.25.4 speaking correction 必須記錄 retried 或 declined。');
+        if (!['retried', 'declined'].includes(c.resolution)) throw new Error('Speaking correction 必須記錄 retried 或 declined。');
         if (c.resolution === 'retried' && (c.learnerRetried !== true || c.retryLearnerFinished !== true || !['confirmed','likely'].includes(c.retryUtteranceReliability) || c.retryTranscriptionIssue !== false)) throw new Error('Retry 必須等 Learner 完整說完，並保留可靠的 retry evidence。');
         if (c.resolution === 'declined' && (c.learnerRetried !== false || !text(c.learnerDeclineWords).trim())) throw new Error('declined 必須保留 Learner 明確拒絕 Retry 的原話。');
       }
@@ -629,7 +670,8 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
       const correction = speakingCorrections.find(c => c.coverageId === item.coverageId);
       const retryAccepted = correction?.resolution==='retried' ? retrySatisfiesItem(item,correction) : false;
       const correctionIssued=!!correction||(Array.isArray(e.currentItemStateHistory)&&e.currentItemStateHistory.includes('CORRECTION_REQUIRED')&&e.currentItemStateHistory.includes('AWAITING_RETRY'));
-      const serverTransition=decideCurrentItemTransition({kind:item.kind,learnerFinished:e.learnerFinished,hearingResolved:['clear','clarified'].includes(e.resolution?.hearing),targetOrTaskResolved:result.ok,importantCorrectionRequired:needsCorrection,correctionIssued,retryReceived:correction?.learnerRetried===true,retryFinished:correction?.retryLearnerFinished===true,retryAccepted,explicitDecline:correction?.resolution==='declined'});
+      const vocabularyOnly=isVocabularyOnlyReport(raw);
+      const serverTransition=decideCurrentItemTransition({kind:item.kind,learnerFinished:e.learnerFinished,hearingResolved:['clear','clarified'].includes(e.resolution?.hearing),targetOrTaskResolved:result.ok,importantCorrectionRequired:needsCorrection,correctionIssued,retryReceived:correction?.learnerRetried===true,retryFinished:correction?.retryLearnerFinished===true,retryAccepted,explicitDecline:correction?.resolution==='declined',allowCorrectionDecline:!vocabularyOnly});
       if (isExecutionGateReport(raw) && result.ok) {
         const correctionResolution = e.resolution?.correction;
         if (needsCorrection && (e.correctionRequired !== true || !correction || !['retried','declined'].includes(correction.resolution) || correctionResolution !== correction.resolution || (correction.resolution==='retried'&&!retryAccepted))) {
@@ -637,6 +679,7 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
           issue(finalStateOf(e,raw.schemaVersion)==='AWAITING_RETRY'?'advanced_before_retry':'missing_required_correction',item,result.validationNote);
         }
         if (!needsCorrection && (e.correctionRequired !== false || correctionResolution !== 'not_needed')) result = {ok:false,remainingReason:'correction_unresolved',validationNote:'需明確記錄本項不需要 correction，或完成實際 correction。'};
+        if (vocabularyOnly && needsCorrection && correction?.resolution === 'declined') result = {ok:false,remainingReason:'correction_unresolved',validationNote:'Vocabulary-only Coverage 的重要錯誤需要 Learner 完成 Retry；declined 只能保存為未完成。'};
       }
       if (strict) {
         const stateProblem = runtimeStateCheck(item,e,result,allowedItem.queuePosition,needsCorrection,correction,raw.schemaVersion);
@@ -685,9 +728,10 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
     }
     if(strict)for(const [coverageId,a] of allowed)if(!seen.has(coverageId)){const item=s.queue.find(x=>x.coverageId===coverageId);checks.push({coverageId,sourceVersion:a.sourceVersion,taskMode:item.taskMode,phaseId:'lesson_application',queuePosition:a.queuePosition,attemptSequence:null,status:'not_tested',newPrompt:'',learnerUtterance:'',utteranceReliability:'not_applicable',transcriptionIssue:false,learnerFinished:false,modelOnly:false,coachSuppliedAnswer:false,currentItemStateHistory:['PENDING'],...(integrity?{runtimeFinalState:'PENDING',evidenceValid:false,correctionLock:'none'}:{finalItemState:'PENDING'}),remainingReason:'not_asked',accuracy:item.kind==='grammar'?'not_tested':null,label:item.label,target:item.target,kind:item.kind,lessonId:item.lessonId,ok:false,validationNote:'本次尚未實際提問。'});}
     summarize(s);
-    const correctionLockCount=s.queue.filter(x=>!practiced(x)&&['required','awaiting_retry'].includes(x.correctionLock)).length;
-    const allEvidenceValid=s.completedCoverage.every(x=>x.evidence&&x.evidence.ok!==false)&&s.remainingCoverage.length===0&&correctionLockCount===0;
-    s.runtimeQueue={totalRequiredCoverage:s.queue.length,resolvedCoverage:s.completedCoverage.length,remainingCoverage:s.remainingCoverage.length,currentCoverageId:s.remainingCoverage[0]?.coverageId||null,currentRequiredItem:s.remainingCoverage[0]?.coverageId||null,correctionLockCount,allEvidenceValid,sessionState:s.remainingCoverage.length||correctionLockCount?'REQUIRED_PRACTICE':'FINAL_CHALLENGE'};
+    const vocabularyAudit=isVocabularyOnlyReport(raw)?fullVocabularyCoverageAudit(s):null;
+    const correctionLockCount=vocabularyAudit?.correctionLockCount??s.queue.filter(x=>!practiced(x)&&['required','awaiting_retry'].includes(x.correctionLock)).length;
+    const allEvidenceValid=vocabularyAudit?.allEvidenceValid??(s.completedCoverage.every(x=>x.evidence&&x.evidence.ok!==false)&&s.remainingCoverage.length===0&&correctionLockCount===0);
+    s.runtimeQueue={totalRequiredCoverage:vocabularyAudit?.totalRequiredCoverage??s.queue.length,resolvedCoverage:vocabularyAudit?.resolvedCoverage??s.completedCoverage.length,remainingCoverage:vocabularyAudit?.remainingCoverage??s.remainingCoverage.length,currentCoverageId:vocabularyAudit?.currentCoverageId??s.remainingCoverage[0]?.coverageId??null,currentRequiredItem:vocabularyAudit?.currentRequiredItem??s.remainingCoverage[0]?.coverageId??null,correctionLockCount,allEvidenceValid,sessionState:(vocabularyAudit?vocabularyAudit.remainingCoverage:s.remainingCoverage.length)||correctionLockCount?'REQUIRED_PRACTICE':'FINAL_CHALLENGE'};
     const rank={not_started:0,partial:1,completed:2};for(const phase of s.phaseProgress){const p=raw.phaseProgress.find(x=>x?.phaseId===phase.phaseId);if(p&&rank[p.status]!==undefined&&text(p.notes).trim()&&rank[p.status]>rank[phase.status])Object.assign(phase,{status:p.status,notes:p.notes});}
     const f=raw.finalChallenge||{},finalSequence=strict?f.attemptSequence:f.sequence,finalStarted=!!(text(f.newPrompt).trim()||text(f.learnerUtterance).trim()||Number.isSafeInteger(finalSequence));
     const currentEvidence=s.completedCoverage.filter(x=>x.evidence?.attemptId===raw.continuationAttemptId);
@@ -695,7 +739,8 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
     const reliableFinal=text(f.newPrompt).trim()&&text(f.learnerUtterance).trim()&&['confirmed','likely'].includes(f.utteranceReliability)&&f.transcriptionIssue===false;
     const auditedIds=Array.isArray(f.auditedCoverageIds)?[...new Set(f.auditedCoverageIds)]:[];
     const runtimeAuditOK=!strict||(raw.runtimeQueue?.remainingCoverage===0&&raw.runtimeQueue?.currentCoverageId===null&&(raw.runtimeQueue?.currentRequiredItem===null||!integrity)&&(!integrity||raw.runtimeQueue?.correctionLockCount===0)&&raw.runtimeQueue?.sessionState==='FINAL_CHALLENGE');
-    const preFinalAuditOK=!isExecutionGateReport(raw)||(f.preFinalAuditPassed===true&&f.remainingCoverageBeforeChallenge===0&&auditedIds.length===s.queue.length&&s.queue.every(x=>auditedIds.includes(x.coverageId))&&runtimeAuditOK&&allEvidenceValid);
+    const requiredAuditItems=isVocabularyOnlyReport(raw)?s.queue.filter(x=>x.kind==='vocabulary'):s.queue;
+    const preFinalAuditOK=!isExecutionGateReport(raw)||(f.preFinalAuditPassed===true&&f.remainingCoverageBeforeChallenge===0&&auditedIds.length===requiredAuditItems.length&&requiredAuditItems.every(x=>auditedIds.includes(x.coverageId))&&runtimeAuditOK&&allEvidenceValid);
     const finalAuditOK=!integrity||f.finalAuditPassed===true;
     const finalCorrectionOK=!integrity||['not_needed','retried','declined'].includes(f.correction)&&f.correctionResolved===true;
     const independentFinal=integrity?f.independentProduction===true&&f.coachSuppliedAnswer===false:f.independentProduction!==false&&f.coachSuppliedAnswer!==true;
@@ -730,12 +775,12 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
     const { attempts, ...rest } = s;
     return { ...rest, speakingSchemaVersion:SPEAKING_SCHEMA_VERSION, attemptCount: attempts.length, reports: attempts.map(a => a.report) };
   }
-  root.EnglishSpeakingQueue = { SCHEMA_VERSION:SPEAKING_SCHEMA_VERSION, PHASES, REASONS, ITEM_STATES, TERMINAL_ITEM_STATES, stable, version, isQueueReport, isSimplifiedReport, isExecutionGateReport, isCurrentItemReport, isRuntimeIntegrityReport, advanceRequiredQueue, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget, capitalizationChoice, detectImportantLanguageIssues, retrySatisfiesItem, decideCurrentItemTransition };
+  root.EnglishSpeakingQueue = { SCHEMA_VERSION:SPEAKING_SCHEMA_VERSION, PHASES, REASONS, ITEM_STATES, TERMINAL_ITEM_STATES, stable, version, isQueueReport, isSimplifiedReport, isExecutionGateReport, isCurrentItemReport, isRuntimeIntegrityReport, isVocabularyOnlyReport, advanceRequiredQueue, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget, capitalizationChoice, detectImportantLanguageIssues, validateCorrection, retrySatisfiesItem, decideCurrentItemTransition, fullVocabularyCoverageAudit };
 })(globalThis);
 
 // END GENERATED speaking-queue.js
 // BEGIN GENERATED speaking-client.js
-// Clean V2.25.4 UI. V2.25.3 voice behavior with isolated report generation.
+// V2.25.5 Vocabulary-only Speaking UI with isolated report generation.
 const SPEAKING_SCHEMA_VERSION = EnglishSpeakingQueue.SCHEMA_VERSION;
 var speakingQueueCache = {}, speakingQueueBusy = false, speakingQueueGeneration = 0;
 const pendingSpeakingText = localStorage.getItem('hanne_speaking_pending_report_v224');
@@ -754,10 +799,10 @@ function renderSpeakingQueuePanel() {
   const c = s.sessionCoverage;
   const reason = { not_asked: '尚未提問', no_learner_response: '尚無完整回答', unreliable_transcript: '語音待確認', hearing_unresolved: '需先確認聽辨', target_not_produced: '尚未可靠產出目標', correction_unresolved: '訂正／Retry 尚未完成', queue_order_violation: '不是目前第一個待完成項目', explicit_skip: '已明確跳過，仍待完成', wrong_task_mode: '需對應的任務／新版本', coach_only_target: '回答中未產出目標字', model_only: '需自己回答', session_stopped: '停止前尚未練習' };
   const done = x => ['PRACTICED','PRACTICED_RELIABLY'].includes(x.state);
-  const group = (kind,title) => `<div class="item"><b>${title}</b><ul>${s.queue.filter(x=>x.kind===kind).map(x=>`<li><b>${done(x)?'✓':'○'} ${esc(x.label)}</b>${!done(x)?' — '+esc(reason[x.remainingReason]||'待練'):x.evidence?.needsReview?' — 已練，內容需要 Review':''}${x.validationNote?`<p class="tiny">${esc(x.validationNote)}</p>`:''}</li>`).join('')}</ul></div>`;
+  const group = (kind,title) => { const rows=s.queue.filter(x=>x.kind===kind); return rows.length?`<div class="item"><b>${title}</b><ul>${rows.map(x=>`<li><b>${done(x)?'✓':'○'} ${esc(x.label)}</b>${!done(x)?' — '+esc(reason[x.remainingReason]||'待練'):x.evidence?.needsReview?' — 已練，內容需要 Review':''}${x.validationNote?`<p class="tiny">${esc(x.validationNote)}</p>`:''}</li>`).join('')}</ul></div>`:''; };
   const latest = (s.reports || []).at(-1), corrections = latest?.speakingCorrections || [];
   const correctionHTML = corrections.length ? `<div class="teaching-section"><h4>Corrections from this session</h4>${corrections.map(x=>`<div class="item"><p><b>${esc(x.original)}</b><br>→ ${esc(x.better)}</p><p class="tiny">${esc(x.reason)}${x.learnerRetried?' · 已重新作答':' · 尚未重新作答'}</p></div>`).join('')}</div>` : '';
-  box.innerHTML = `<div class="note"><h3>Today's Speaking</h3>${group('vocabulary','Vocabulary')}${group('grammar','Grammar')}<p><b>Coverage: ${c.practiced} / ${c.total}</b> · ${c.remaining} 項剩餘</p><p>${s.completed?'Vocabulary、Grammar 與 Final Challenge 已完成。':c.remaining?'下個練習：'+esc(s.remainingCoverage[0].label):'Required Coverage 已練齊，接著完成 Final Challenge。'}</p><p class="tiny">${esc(s.lessonTitle)} · Previous corrections 與 spelling 只作為 Coach 觀察重點，不會增加 Required Coverage。</p>${correctionHTML}</div>`;
+  box.innerHTML = `<div class="note"><h3>Today's Speaking</h3>${group('vocabulary','Vocabulary')}<p><b>Vocabulary Coverage: ${c.practiced} / ${c.total}</b> · ${c.remaining} 項剩餘</p><p>${s.completed?'Vocabulary 與 Final Challenge 已完成。':c.remaining?'下個單字：'+esc(s.remainingCoverage[0].label):'Vocabulary Coverage 已練齊，接著完成 Final Challenge。'}</p><p class="tiny">${esc(s.lessonTitle)} · Grammar、Previous corrections 與 spelling 只作為教材／Review Context，不會增加 Speaking Required Coverage。</p>${correctionHTML}</div>`;
 }
 async function speakingQueueRequest(input) {
   const response = await fetch(CLOUD_URL + '/functions/v1/speaking-queue', { method: 'POST', headers: { apikey: CLOUD_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
@@ -839,7 +884,6 @@ function formatSpeakingBrief(data, id, s) {
   const compact = x => x ? {
     coverageId:x.coverageId, sourceVersion:x.sourceVersion, kind:x.kind,
     target:x.target, label:x.label, taskMode:x.taskMode, state:x.state,
-    ...(x.evidenceType ? {evidenceType:x.evidenceType, grammarTask:x.grammarTask, expectedAnswer:x.expectedAnswer} : {}),
     ...(x.remainingReason ? {remainingReason:x.remainingReason} : {})
   } : null;
   const schema = {
@@ -852,7 +896,7 @@ function formatSpeakingBrief(data, id, s) {
     phaseProgress:s.phaseProgress.map(p=>({...p})),
     coverageChecks:[{
       coverageId:'COPY_EXACT_ID', sourceVersion:'COPY_EXACT_VERSION',
-      taskMode:'vocabulary_production|grammar_application',
+      taskMode:'vocabulary_production',
       phaseId:'warmup|lesson_application|knowledge_integration',
       queuePosition:1, attemptSequence:1, status:'practiced|not_tested',
       newPrompt:'ACTUAL QUESTION', learnerUtterance:'ACTUAL COMPLETE RESPONSE',
@@ -872,10 +916,7 @@ function formatSpeakingBrief(data, id, s) {
       runtimeFinalState:'RESOLVED', evidenceValid:true,
       correctionLock:'none|required|awaiting_retry|retried|declined',
       correctionRequired:false, productionQuality:'acceptable|needs_review',
-      grammarRuleId:'ONLY_FOR_GRAMMAR', grammarTask:'COPY_ITEM_GRAMMAR_TASK',
-      caseExample:'EXACT_EXAMPLE_IN_QUESTION',
-      accuracy:'correct|incorrect|not_tested|null', needsReview:false,
-      ruleApplication:'ONLY_FOR_GENERAL_GRAMMAR', praiseGiven:false,
+      accuracy:null, needsReview:false, praiseGiven:false,
       notes:'ACTUAL EVIDENCE',
       remainingReason:'not_asked|hearing_unresolved|target_not_produced|correction_unresolved|explicit_skip'
     }],
@@ -946,7 +987,8 @@ BRIEF_LOADED → TEXT_READY → VOICE_ENTERED → SESSION_ACTIVE → FIRST_QUEST
 Never repeat the text-mode message in Voice.
 
 SERVER-CONFIRMED REQUIRED COVERAGE
-Derive TOTAL REQUIRED COVERAGE dynamically; never hardcode 8. For example, 6 Vocabulary + 4 Grammar has 10.
+Required Coverage is Vocabulary only. Grammar remains in the lesson but is never a Speaking queue item or completion gate.
+Derive TOTAL REQUIRED COVERAGE dynamically from this session's Vocabulary queue; never hardcode 5. A future lesson with 7 Speaking Vocabulary has TOTAL REQUIRED COVERAGE: 7.
 TOTAL REQUIRED COVERAGE: ${s.queue.length}
 CURRENT SESSION COMPLETED: ${s.completedCoverage.length}
 REMAINING: ${remaining.length}
@@ -960,24 +1002,23 @@ PHASE PROGRESS: ${JSON.stringify(s.phaseProgress)}
 ${s.phaseProgress.find(p=>p.phaseId==='warmup').status==='completed'?'Do NOT restart warm-up. Resume the FIRST unresolved Required item.':'Use at most one short warm-up, then begin the FIRST unresolved Required item.'}
 
 CANONICAL RUNTIME LOOP — THE ONLY QUEUE FLOW
-1. Select the FIRST unresolved Required item.
+1. Select the FIRST unresolved Vocabulary item.
 2. Ask one simple question.
 3. WAIT until the learner has finished.
 4. Confirm hearing if needed.
-5. Confirm the learner actually completed this target/task.
-6. Correct only an important error; if corrected, WAIT for Retry or explicit refusal.
+5. Confirm the learner independently produced the target.
+6. Correct only an important error; if corrected, WAIT for the Learner's complete Retry.
 7. Update evidence and advance only after the current item is resolved.
 8. Repeat from the new FIRST unresolved item.
 
 Exactly one item is current. An unresolved current item blocks every later item.
-Allowed runtime states: PENDING, ACTIVE, AWAITING_LEARNER, HEARING_UNRESOLVED, TARGET_UNRESOLVED, TASK_UNRESOLVED, CORRECTION_REQUIRED, AWAITING_RETRY, RESOLVED, RESOLVED_WITH_DECLINED_CORRECTION, EXPLICITLY_SKIPPED, SESSION_STOPPED.
-Only RESOLVED, RESOLVED_WITH_DECLINED_CORRECTION, or EXPLICITLY_SKIPPED may advance the queue.
+Allowed active states: PENDING, ACTIVE, AWAITING_LEARNER, HEARING_UNRESOLVED, TARGET_UNRESOLVED, CORRECTION_REQUIRED, AWAITING_RETRY, RESOLVED, EXPLICITLY_SKIPPED, SESSION_STOPPED.
+Only RESOLVED or EXPLICITLY_SKIPPED may move the conversation forward. An explicitly skipped word remains incomplete and still blocks Final Challenge.
 Maintain queuePosition as the fixed lesson order. attemptSequence is the real order asked in this attempt.
 
 SUCCESS GATES
 Vocabulary: hearing is clear, the learner finishes, and the learner actually says the required target. Meaning alone, a target only in the question, or the Coach's answer is not evidence.
-Grammar: ask the exact independent Grammar coverageId and use its server-provided expectedAnswer as the source of truth. The three Grammar IDs are three separate tasks. Completing one never completes its neighbors.
-Important correction: correctionLock must finish as retried or explicitly declined before advance. Small style improvements may be feedback and do not block.
+Important correction: correctionLock must finish as retried before Coverage resolves. A refusal may be saved as partial progress but does not resolve the Vocabulary item. Small style improvements may be feedback and do not block.
 Final Challenge is permitted ONLY when remainingCoverage === 0, currentRequiredItem === null, correctionLockCount === 0, allEvidenceValid === true, and the Pre-Final audit passes. Otherwise Final Challenge is BLOCKED.
 Normal completion requires a complete Final Challenge, its feedback/correction, and a final audit. Never claim completion from conversation length or general performance.
 
@@ -985,11 +1026,11 @@ MANDATORY DECISION BEFORE EVERY ADVANCE
 Target produced is only the Target Gate. It never resolves Coverage by itself.
 After the learner's complete turn, silently decide in this exact order:
 1. Is hearing clear? If no, clarify and WAIT.
-2. Did the learner produce the exact target/task? If no, elicit it and WAIT.
+2. Did the learner independently produce the exact Vocabulary target? If no, elicit it and WAIT.
 3. Is there an important language error? Check every category below.
 4. If yes: set CORRECTION_REQUIRED, give My sentence / Better / Why, say “Now try it again,” set AWAITING_RETRY, and WAIT.
 5. A recast, paraphrase, praise, “got it,” or Coach model is never Retry evidence.
-6. Advance only after a complete acceptable Learner Retry, or an explicit refusal.
+6. Advance only after a complete acceptable Learner Retry.
 
 BLOCKING CORRECTION CATEGORIES
 missing be verb; wrong tense; wrong verb form; third-person singular; important article/determiner; singular/plural; important preposition; incomplete core sentence structure; target misuse; meaning-changing error; recurring important grammar weakness.
@@ -1020,7 +1061,6 @@ HEARING CONFIRMATION
 HARD RULE — NO EVALUATION WITHOUT HEARING CONFIRMATION.
 If audio/transcript is unclear, ask only the smallest confirmation, then WAIT:
 “Sorry, did you say ‘descendant’?” / “Could you say that word one more time?”
-For Capital → “Capitalist”, ask “Did you mean capital?”
 A speech-recognition failure is not a learner error. Never reconstruct or semantically guess damaged audio. Keep hearing unresolved and evidenceValid=false until confirmed.
 
 TARGET AND SUPPORT
@@ -1042,7 +1082,7 @@ Why: <short reason; Traditional Chinese may help>
 Now try it again.
 Then WAIT for the whole Retry. Do not move on because the learner understood the explanation.
 Recasting the sentence yourself does not complete Correction. The Learner must say the corrected form.
-Before correcting, compare Better with the actual utterance. If they are already the same, retract the correction, do not create a learner weakness, and optionally report false_correction.
+Before correcting: capture the actual utterance, identify the exact error span, create Better, compare Original with Better, and confirm the claimed error really exists. If the claimed error is absent or Original and Better are effectively the same, DO NOT CORRECT. Report coachExecutionIssue=false_correction; do not create a learner weakness, correction record, or recurring error.
 Praise must never replace correction. “Great job! Next question.” is prohibited while an important error is unresolved.
 For a spouse example, “We don't have married” needs “We're not married”; “if my boyfriend marry me” needs “if my boyfriend marries me”. Then say “Now try it again.”
 
@@ -1053,17 +1093,9 @@ ordinary Next is never explicit Skip. Only direct words such as “Skip this wor
 Stop only on an explicit learner request. Time is recorded, never a limit; 8–12 minutes is an estimate, and 18 or 25 minutes is valid.
 
 COVERAGE QUESTIONS AND FINAL
-If asked “Did we practice everything?”, “Have you lost any words?”, or「有沒有漏？」, immediately audit the full Required queue with fullQueueAudit(). Never ask the Learner which word was missed.
-If Grammar completed is 0/3, say: “We haven't practiced the grammar part yet. We still have three grammar items left.”
-If Grammar completed is 1/3, say: “We practiced one grammar rule. We still have two left.”
-When all Required items pass, run the Pre-Final audit. Then ask one Final Challenge for 2–3 connected sentences using 2–3 suitable targets. WAIT, give feedback, handle any important correction and Retry, then run the Final audit.
-
-VOCABULARY → GRAMMAR TRANSITION
-After the fifth Vocabulary resolves, recompute FIRST unresolved. It must be Grammar 1, never wrap-up, optional conversation, or Final Challenge.
-Grammar 1 (title_with_name, expectedAnswer=capital): ask an independent question such as “In ‘Aunt Mary,’ should ‘Aunt’ start with a capital letter or a lowercase letter?”
-After Grammar 1 resolves, ask Grammar 2 (title_replacing_name, expectedAnswer=capital) with a new independent example.
-After Grammar 2 resolves, ask Grammar 3 (possessive_title, expectedAnswer=lowercase): “In ‘my mom,’ should ‘mom’ start with a capital letter or a lowercase letter?”
-If the Learner answers Capital for “my mom,” it is incorrect. Explain that a title after a possessive is lowercase, request “Lowercase” as Retry, and WAIT. “Next” or “Keep going” continues Required Grammar; it never skips it.
+If asked “Did we practice everything?”, “Have you lost any words?”, or「有沒有漏？」, immediately run fullVocabularyCoverageAudit(). Never ask the Learner which word was missed.
+After the last Vocabulary appears resolved, audit every required Vocabulary ID. Require resolvedCoverage === totalRequiredCoverage, remainingCoverage === 0, correctionLockCount === 0, and allEvidenceValid === true. If any check fails, return to the FIRST unresolved Vocabulary.
+Only after the Vocabulary audit passes, ask one Final Challenge for 2–3 connected sentences using 2–3 suitable Vocabulary targets. WAIT, give feedback, handle any important correction and Learner Retry, then run the Final audit.
 
 REVIEW CONTEXT — COACHING PRIORITY ONLY, NEVER REQUIRED COVERAGE
 Use this only when it fits naturally. It never adds queue items or completion gates:
@@ -1076,9 +1108,8 @@ Generate this only after Voice ends. Return one complete SPEAKING_REPORT JSON us
 
 Report rules:
 - schemaVersion must be ${SPEAKING_SCHEMA_VERSION}.
-- Unasked item: status=not_tested, attemptSequence=null, runtimeFinalState=PENDING, evidenceValid=false, correctionLock=none, accuracy=not_tested for Grammar.
-- Grammar accuracy is correct or incorrect only after an actual reliable answer; otherwise not_tested or null.
-- Use the server expectedAnswer, never capitalization appearance in ASR text.
+- coverageChecks contains only the server-provided Vocabulary Required Coverage IDs. Do not add Grammar not_tested rows.
+- Unasked Vocabulary: status=not_tested, attemptSequence=null, runtimeFinalState=PENDING, evidenceValid=false, correctionLock=none.
 - Preserve exact queuePosition and actual attemptSequence.
 - For unclear hearing: evidenceValid=false; semanticGuessUsed must remain false for valid evidence.
 - speakingCorrections contains observed important corrections only. A false/retracted correction must not become learner weakness.
@@ -2519,5 +2550,4 @@ $("correctionToSpeaking").onclick=()=>{
  setInterval(syncPoll,2000);
 })();
 </script></body></html>
-
 

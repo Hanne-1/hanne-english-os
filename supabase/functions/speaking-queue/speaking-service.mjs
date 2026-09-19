@@ -20,7 +20,11 @@ export function createSpeakingService(store, makeId = () => crypto.randomUUID())
       if (input.action === 'report' && !row) throw new Error('找不到伺服器 Session。');
       if (row && input.action !== 'report' && schemaVersion === '2.24.0' && Q.isSimplifiedReport({schemaVersion:row.state?.schemaVersion})) {
         if (input.action === 'status') return { state: Q.publicState(row.state), sourceFingerprint: fingerprint };
-        throw new Error('Speaking 已升級為 V2.25.1，請重新載入網站後再準備口說內容。');
+        throw new Error('Speaking 已升級為 V2.25.2，請重新載入網站後再準備口說內容。');
+      }
+      if (row && input.action !== 'report' && Q.isExecutionGateReport({schemaVersion:row.state?.schemaVersion}) && !Q.isExecutionGateReport({schemaVersion})) {
+        if (input.action === 'status') return { state: Q.publicState(row.state), sourceFingerprint: fingerprint };
+        throw new Error('Speaking 已升級為 V2.25.2 execution gates，請重新載入網站後再準備口說內容。');
       }
       if (!row && input.action === 'status') return { state: null, sourceFingerprint: fingerprint };
       const prior = row?.state || null;

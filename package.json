@@ -1,6 +1,6 @@
 {
   "name": "hanne-english-os",
-  "version": "2.25.1",
+  "version": "2.25.2",
   "private": true,
   "scripts": {
     "build": "node scripts/build.mjs",

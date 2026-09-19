@@ -1969,7 +1969,7 @@ function speakingPracticeReportHTML(report){
 
 function renderSpeakingContextSummary(data=speakingHandoffData($("speakingLesson")?.value||"")){
  const box=$("speakingContextSummary");if(!box)return;
- box.innerHTML=data?`<p>Required Coverage 只包含本課 Vocabulary＋Grammar；${data.currentLessonCorrections.length} 筆既有訂正、拼字與舊知識會作為 Coach 的 Review Context，不會增加必做題數。</p>`+speakingCoverageHTML(data):"請先選擇要練習的教材。";
+ box.innerHTML=data?`<p>Required Coverage 只包含本課 Vocabulary；Grammar、${data.currentLessonCorrections.length} 筆既有訂正、拼字與舊知識只作為 Coach 的 Review Context，不會增加必做題數。</p>`+speakingCoverageHTML(data):"請先選擇要練習的教材。";
 }
 
 

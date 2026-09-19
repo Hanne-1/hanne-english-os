@@ -122,6 +122,8 @@ function formatSpeakingBrief(data, id, s) {
       utteranceReliability:'confirmed|likely|uncertain', transcriptionIssue:false,
       semanticGuessUsed:false, learnerFinished:true, modelOnly:false,
       coachSuppliedAnswer:false, independentAfterCoachAnswer:false,
+      importantLanguageError:false,
+      importantCorrectionCategories:[],
       resolution:{
         hearing:'clear|clarified|unresolved',
         clarificationPrompt:'', clarificationResponse:'',
@@ -172,11 +174,20 @@ function formatSpeakingBrief(data, id, s) {
     correctionChecks:[], targetsUsedWell:[], targetsToReview:[],
     grammarToReview:[], pronunciationNotes:[], betterExpressions:[], overallNotes:[]
   };
+  const compactCorrection = c => ({
+    correctionId:c.correctionId,target:c.target,round:c.round,
+    originalAnswer:c.originalAnswer,gptSuggestedAnswer:c.gptSuggestedAnswer,
+    learnerCorrection:c.learnerCorrection,correctionStatus:c.correctionStatus,
+    teachingFeedback:c.teachingFeedback ? {
+      issue:c.teachingFeedback.issue,
+      ruleOrPattern:c.teachingFeedback.ruleOrPattern
+    } : null
+  });
   const reviewContext = {
-    currentLessonCorrections:data.currentLessonCorrections,
-    olderReviewCorrections:data.olderReviewCorrections,
-    reviewItems:data.reviewItems,
-    learningFocus:data.learningFocus
+    currentLessonCorrections:(data.currentLessonCorrections||[]).map(compactCorrection),
+    olderReviewCorrections:(data.olderReviewCorrections||[]).map(compactCorrection),
+    reviewItems:(data.reviewItems||[]).map(x=>({target:x.target,component:x.component,reasons:x.reasons})),
+    speakingPriorities:data.learningFocus?.suggestionsToVerify||null
   };
   return `SPEAKING ${s.attemptCount ? 'CONTINUATION' : 'PRACTICE'} · V${SPEAKING_SCHEMA_VERSION}
 
@@ -233,6 +244,25 @@ Important correction: correctionLock must finish as retried or explicitly declin
 Final Challenge is permitted ONLY when remainingCoverage === 0, currentRequiredItem === null, correctionLockCount === 0, allEvidenceValid === true, and the Pre-Final audit passes. Otherwise Final Challenge is BLOCKED.
 Normal completion requires a complete Final Challenge, its feedback/correction, and a final audit. Never claim completion from conversation length or general performance.
 
+MANDATORY DECISION BEFORE EVERY ADVANCE
+Target produced is only the Target Gate. It never resolves Coverage by itself.
+After the learner's complete turn, silently decide in this exact order:
+1. Is hearing clear? If no, clarify and WAIT.
+2. Did the learner produce the exact target/task? If no, elicit it and WAIT.
+3. Is there an important language error? Check every category below.
+4. If yes: set CORRECTION_REQUIRED, give My sentence / Better / Why, say “Now try it again,” set AWAITING_RETRY, and WAIT.
+5. A recast, paraphrase, praise, “got it,” or Coach model is never Retry evidence.
+6. Advance only after a complete acceptable Learner Retry, or an explicit refusal.
+
+BLOCKING CORRECTION CATEGORIES
+missing be verb; wrong tense; wrong verb form; third-person singular; important article/determiner; singular/plural; important preposition; incomplete core sentence structure; target misuse; meaning-changing error; recurring important grammar weakness.
+
+KNOWN ACCEPTANCE CASES — THESE MUST BLOCK
+- “I have a one niece. She is very kind a girl.” → “I have one niece. She is a very kind girl.” Then require Retry.
+- “My ancestor sell pork in market.” → “My ancestor sold pork in the market.” Then require Retry.
+- “I have two sibling.” → “I have two siblings.” Then require Retry.
+Never say “You used the target well. Now let's move on” while any blocking error remains.
+
 COACHING RULES
 
 ASK SIMPLE, NATURAL QUESTIONS
@@ -274,6 +304,7 @@ Better: <natural corrected version>
 Why: <short reason; Traditional Chinese may help>
 Now try it again.
 Then WAIT for the whole Retry. Do not move on because the learner understood the explanation.
+Recasting the sentence yourself does not complete Correction. The Learner must say the corrected form.
 Before correcting, compare Better with the actual utterance. If they are already the same, retract the correction, do not create a learner weakness, and optionally report false_correction.
 Praise must never replace correction. “Great job! Next question.” is prohibited while an important error is unresolved.
 For a spouse example, “We don't have married” needs “We're not married”; “if my boyfriend marry me” needs “if my boyfriend marries me”. Then say “Now try it again.”
@@ -289,6 +320,13 @@ If asked “Did we practice everything?”, “Have you lost any words?”, or�
 If Grammar completed is 0/3, say: “We haven't practiced the grammar part yet. We still have three grammar items left.”
 If Grammar completed is 1/3, say: “We practiced one grammar rule. We still have two left.”
 When all Required items pass, run the Pre-Final audit. Then ask one Final Challenge for 2–3 connected sentences using 2–3 suitable targets. WAIT, give feedback, handle any important correction and Retry, then run the Final audit.
+
+VOCABULARY → GRAMMAR TRANSITION
+After the fifth Vocabulary resolves, recompute FIRST unresolved. It must be Grammar 1, never wrap-up, optional conversation, or Final Challenge.
+Grammar 1 (title_with_name, expectedAnswer=capital): ask an independent question such as “In ‘Aunt Mary,’ should ‘Aunt’ start with a capital letter or a lowercase letter?”
+After Grammar 1 resolves, ask Grammar 2 (title_replacing_name, expectedAnswer=capital) with a new independent example.
+After Grammar 2 resolves, ask Grammar 3 (possessive_title, expectedAnswer=lowercase): “In ‘my mom,’ should ‘mom’ start with a capital letter or a lowercase letter?”
+If the Learner answers Capital for “my mom,” it is incorrect. Explain that a title after a possessive is lowercase, request “Lowercase” as Retry, and WAIT. “Next” or “Keep going” continues Required Grammar; it never skips it.
 
 REVIEW CONTEXT — COACHING PRIORITY ONLY, NEVER REQUIRED COVERAGE
 Use this only when it fits naturally. It never adds queue items or completion gates:

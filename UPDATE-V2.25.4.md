@@ -21,3 +21,12 @@
 ## 驗證
 
 新增 10 個 clean rebuild checkpoints，並與原 Coverage、Current Item Lock、Runtime Integrity、UI 回歸測試一起執行。
+
+## Targeted Acceptance Fix
+
+- Target Gate 與 Correction Gate 分離；target 出現後仍需檢查重要句型錯誤。
+- Runtime 可偵測本次真人測試確認的 determiner、noun phrase、ancestor past tense、market article/preposition 與 plural 錯誤。
+- Retry 需完整、可靠，而且修正後仍需包含 Vocabulary target；Grammar Retry 必須符合伺服器 expectedAnswer。
+- 新增可執行的 Current Item transition：`CORRECTION_REQUIRED → AWAITING_RETRY → RESOLVED`。
+- Speaking Brief 明確禁止把 recast、praise 或 Coach model 當成 Retry，並縮減 Review Context，降低 Voice 執行規則被大量資料淹沒的風險。
+- 新增 10 個 targeted runtime acceptance tests，涵蓋 niece、ancestor、Retry pause、sibling、Vocabulary → Grammar、三個獨立 Grammar、錯誤 Grammar 答案、不可跳過 Grammar 與 Final Challenge gate。

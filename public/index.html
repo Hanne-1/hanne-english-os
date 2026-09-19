@@ -421,6 +421,60 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
     const lower = /\blower(?:case)?\b|小寫/.test(v), capital = /\b(?:capital|uppercase|upper-case)\b|大寫/.test(v);
     return lower === capital ? null : lower ? 'lowercase' : 'capital';
   }
+  function detectImportantLanguageIssues(utterance, item = {}) {
+    const original=text(utterance).trim(), issues=[];
+    if(!original)return issues;
+    const add=(category,better,reason)=>{if(better&&normalizedSentence(better)!==normalizedSentence(original)&&!issues.some(x=>x.category===category))issues.push({category,original,better,reason});};
+    let better=original;
+    if(/\ba\s+one\s+([a-z]+)/i.test(better)){
+      better=better.replace(/\ba\s+one\s+([a-z]+)/i,'one $1');
+      add('important_article_determiner',better,'one 已經是限定詞，前面不再加 a。');
+    }
+    if(/\b(?:is|was)\s+very\s+([a-z]+)\s+a\s+([a-z]+)/i.test(better)){
+      const fixed=better.replace(/\b(is|was)\s+very\s+([a-z]+)\s+a\s+([a-z]+)/i,'$1 a very $2 $3');
+      add('incomplete_core_sentence_structure',fixed,'英文名詞片語使用 a + very + adjective + noun。');
+      better=fixed;
+    }
+    if(/\b(?:my\s+)?niece\s+(?:is\s+)?(?:about\s+)?\d+\s+years?\s+old\b/i.test(better)&&!/\bniece\s+is\b/i.test(better)){
+      const fixed=better.replace(/\b(my\s+niece|niece)\s+((?:about\s+)?\d+\s+years?\s+old)\b/i,'$1 is $2');
+      add('missing_be_verb',fixed,'年齡句需要 be 動詞 is。');
+      better=fixed;
+    }
+    const target=text(item.target).toLowerCase();
+    if(target==='ancestor'&&/\bancestor\s+sell\b/i.test(better)){
+      const fixed=better.replace(/\bancestor\s+sell\b/i,m=>m.replace(/sell/i,'sold'));
+      add('wrong_tense_or_verb_form',fixed,'描述祖先過去做的事要使用過去式 sold。');
+      better=fixed;
+    }
+    if(target==='ancestor'&&/\bin\s+market\b/i.test(better)){
+      const fixed=better.replace(/\bin\s+market\b/i,'in the market');
+      add('important_article_preposition',fixed,'這個情境使用 in the market。');
+      better=fixed;
+    }
+    if(target&&new RegExp('\\b(?:two|three|four|five|six|seven|eight|nine|ten)\\s+'+target.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i').test(better)){
+      const fixed=better.replace(new RegExp('(\\b(?:two|three|four|five|six|seven|eight|nine|ten)\\s+)'+target.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i'),'$1'+target+'s');
+      add('singular_plural',fixed,'數量大於一時，可數名詞使用複數。');
+    }
+    return issues;
+  }
+  function retrySatisfiesItem(item, correction) {
+    if(correction?.resolution!=='retried'||correction.learnerRetried!==true||correction.retryLearnerFinished!==true||!['confirmed','likely'].includes(correction.retryUtteranceReliability)||correction.retryTranscriptionIssue!==false)return false;
+    const retry=text(correction.retryUtterance).trim();if(!retry)return false;
+    if(item.kind==='grammar'&&item.expectedAnswer)return capitalizationChoice(retry)===item.expectedAnswer;
+    return detectImportantLanguageIssues(retry,item).length===0&&(item.kind!=='vocabulary'||containsTarget(retry,item.target));
+  }
+  function decideCurrentItemTransition(input={}) {
+    if(input.learnerFinished!==true)return {runtimeState:'AWAITING_LEARNER',correctionLock:'none',queueAdvance:false,coachAction:'WAIT'};
+    if(input.hearingResolved!==true)return {runtimeState:'HEARING_UNRESOLVED',correctionLock:'none',queueAdvance:false,coachAction:'CLARIFY_HEARING'};
+    if(input.targetOrTaskResolved!==true)return {runtimeState:input.kind==='grammar'?'TASK_UNRESOLVED':'TARGET_UNRESOLVED',correctionLock:'none',queueAdvance:false,coachAction:'ELICIT_CURRENT'};
+    if(input.importantCorrectionRequired===true){
+      if(input.explicitDecline===true)return {runtimeState:'RESOLVED_WITH_DECLINED_CORRECTION',correctionLock:'declined',queueAdvance:true,coachAction:'ADVANCE'};
+      if(input.correctionIssued!==true)return {runtimeState:'CORRECTION_REQUIRED',correctionLock:'required',queueAdvance:false,coachAction:'CORRECT_AND_REQUEST_RETRY'};
+      if(input.retryReceived!==true||input.retryFinished!==true||input.retryAccepted!==true)return {runtimeState:'AWAITING_RETRY',correctionLock:'awaiting_retry',queueAdvance:false,coachAction:'WAIT_FOR_RETRY'};
+      return {runtimeState:'RESOLVED',correctionLock:'retried',queueAdvance:true,coachAction:'ADVANCE'};
+    }
+    return {runtimeState:'RESOLVED',correctionLock:'none',queueAdvance:true,coachAction:'ADVANCE'};
+  }
   function attemptOrder(e, schemaVersion) { return isCurrentItemReport({schemaVersion}) ? e?.attemptSequence : e?.sequence; }
   function advanceRequiredQueue(unresolved, coverageId, finalItemState, legacyResolved = false) {
     if (coverageId !== unresolved[0]) return false;
@@ -570,11 +624,15 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
       let result = assess(item, e, raw.schemaVersion);
       const assessedAccuracy = result.accuracy;
       if(integrity&&e.semanticGuessUsed===true&&(!['clear','clarified'].includes(e.resolution?.hearing)||e.transcriptionIssue!==false)){issue('semantic_guess_under_uncertainty',item,'ASR 未確認時不得猜測 Learner 原意。');result={ok:false,remainingReason:'hearing_unresolved',validationNote:'ASR 未確認且使用 semantic guess；保持 Hearing Lock。'};}
-      const needsCorrection = result.ok && (e.productionQuality === 'needs_review' || e.needsReview === true || result.accuracy === 'incorrect');
+      const detectedLanguageIssues = result.ok ? detectImportantLanguageIssues(e.learnerUtterance,item) : [];
+      const needsCorrection = result.ok && (detectedLanguageIssues.length>0 || e.importantLanguageError === true || e.productionQuality === 'needs_review' || e.needsReview === true || result.accuracy === 'incorrect');
       const correction = speakingCorrections.find(c => c.coverageId === item.coverageId);
+      const retryAccepted = correction?.resolution==='retried' ? retrySatisfiesItem(item,correction) : false;
+      const correctionIssued=!!correction||(Array.isArray(e.currentItemStateHistory)&&e.currentItemStateHistory.includes('CORRECTION_REQUIRED')&&e.currentItemStateHistory.includes('AWAITING_RETRY'));
+      const serverTransition=decideCurrentItemTransition({kind:item.kind,learnerFinished:e.learnerFinished,hearingResolved:['clear','clarified'].includes(e.resolution?.hearing),targetOrTaskResolved:result.ok,importantCorrectionRequired:needsCorrection,correctionIssued,retryReceived:correction?.learnerRetried===true,retryFinished:correction?.retryLearnerFinished===true,retryAccepted,explicitDecline:correction?.resolution==='declined'});
       if (isExecutionGateReport(raw) && result.ok) {
         const correctionResolution = e.resolution?.correction;
-        if (needsCorrection && (e.correctionRequired !== true || !correction || !['retried','declined'].includes(correction.resolution) || correctionResolution !== correction.resolution)) {
+        if (needsCorrection && (e.correctionRequired !== true || !correction || !['retried','declined'].includes(correction.resolution) || correctionResolution !== correction.resolution || (correction.resolution==='retried'&&!retryAccepted))) {
           result = {ok:false,remainingReason:'correction_unresolved',validationNote:'重要錯誤尚未完成 My sentence / Better / Why 與 Retry／明確 declined。'};
           issue(finalStateOf(e,raw.schemaVersion)==='AWAITING_RETRY'?'advanced_before_retry':'missing_required_correction',item,result.validationNote);
         }
@@ -585,7 +643,7 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
         if (stateProblem) { issue(stateProblem.issue,item,stateProblem.validationNote); result={ok:false,remainingReason:stateProblem.remainingReason,validationNote:stateProblem.validationNote}; }
       }
       if(integrity&&e.praiseGiven===true&&!result.ok)issue('unsupported_praise',item,'Item 尚未 resolved，不得用完成式 praise 關閉。');
-      evaluated.push({e,item,result,inputIndex,needsCorrection,correction,assessedAccuracy});
+      evaluated.push({e,item,result,inputIndex,needsCorrection,correction,assessedAccuracy,detectedLanguageIssues,serverTransition});
     }
     if (isExecutionGateReport(raw)) {
       const unresolved = s.activeAttempt.items.map(x => x.coverageId);
@@ -604,18 +662,26 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
         if(row.result.ok||explicitSkip)advanceRequiredQueue(unresolved,row.item.coverageId,finalStateOf(row.e,raw.schemaVersion),!strict);
       }
     }
-    for (const {e,item,result,needsCorrection,correction,assessedAccuracy} of evaluated) {
+    for (const {e,item,result,needsCorrection,correction,assessedAccuracy,detectedLanguageIssues,serverTransition} of evaluated) {
       if (seen.has(item.coverageId)) warnings.push('同項有多筆嘗試；保留已取得的有效證據。'); seen.add(item.coverageId);
       const finalState=finalStateOf(e,raw.schemaVersion)||'PENDING';
       const normalized={...clone(e),...result,status:result.ok?'practiced':'not_tested',label:item.label,target:item.target,kind:item.kind,lessonId:item.lessonId};
-      if(integrity){normalized.runtimeFinalState=finalState;delete normalized.finalItemState;normalized.evidenceValid=result.ok&&['RESOLVED','RESOLVED_WITH_DECLINED_CORRECTION'].includes(finalState);normalized.correctionLock=expectedCorrectionLock(result,needsCorrection,correction,finalState);}
+      normalized.detectedImportantLanguageIssues=detectedLanguageIssues;
+      normalized.serverTransition=serverTransition;
+      if(integrity){
+        const enforceCorrectionState=needsCorrection&&!result.ok&&serverTransition.queueAdvance===false&&['CORRECTION_REQUIRED','AWAITING_RETRY'].includes(serverTransition.runtimeState);
+        normalized.runtimeFinalState=enforceCorrectionState?serverTransition.runtimeState:finalState;
+        delete normalized.finalItemState;
+        normalized.evidenceValid=result.ok&&['RESOLVED','RESOLVED_WITH_DECLINED_CORRECTION'].includes(normalized.runtimeFinalState);
+        normalized.correctionLock=enforceCorrectionState?serverTransition.correctionLock:expectedCorrectionLock(result,needsCorrection,correction,normalized.runtimeFinalState);
+      }
       if(strict&&item.kind==='grammar'&&normalized.status==='not_tested'){
         if(['correct','incorrect'].includes(assessedAccuracy))normalized.accuracy=assessedAccuracy;
         else{if(normalized.accuracy&&normalized.accuracy!=='not_tested')issue('fabricated_accuracy',item,'未實際取得可靠 Grammar 回答，不可回報 incorrect/correct。');normalized.accuracy='not_tested';}
       }
       checks.push(normalized);
       if(result.ok){item.state='PRACTICED';item.evidence={...clone(e),...result,evidenceValid:true,runtimeFinalState:finalState,correctionLock:normalized.correctionLock,attemptId:raw.continuationAttemptId};delete item.remainingReason;delete item.validationNote;item.correctionLock='none';}
-      else if(!practiced(item)){Object.assign(item,result,{correctionLock:normalized.correctionLock||'none',runtimeFinalState:finalState});}
+      else if(!practiced(item)){Object.assign(item,result,{correctionLock:normalized.correctionLock||'none',runtimeFinalState:normalized.runtimeFinalState||finalState,requiredCoachAction:serverTransition.coachAction,detectedImportantLanguageIssues:detectedLanguageIssues});}
     }
     if(strict)for(const [coverageId,a] of allowed)if(!seen.has(coverageId)){const item=s.queue.find(x=>x.coverageId===coverageId);checks.push({coverageId,sourceVersion:a.sourceVersion,taskMode:item.taskMode,phaseId:'lesson_application',queuePosition:a.queuePosition,attemptSequence:null,status:'not_tested',newPrompt:'',learnerUtterance:'',utteranceReliability:'not_applicable',transcriptionIssue:false,learnerFinished:false,modelOnly:false,coachSuppliedAnswer:false,currentItemStateHistory:['PENDING'],...(integrity?{runtimeFinalState:'PENDING',evidenceValid:false,correctionLock:'none'}:{finalItemState:'PENDING'}),remainingReason:'not_asked',accuracy:item.kind==='grammar'?'not_tested':null,label:item.label,target:item.target,kind:item.kind,lessonId:item.lessonId,ok:false,validationNote:'本次尚未實際提問。'});}
     summarize(s);
@@ -664,7 +730,7 @@ button:focus-visible,select:focus-visible{outline:3px solid #9b91ae;outline-offs
     const { attempts, ...rest } = s;
     return { ...rest, speakingSchemaVersion:SPEAKING_SCHEMA_VERSION, attemptCount: attempts.length, reports: attempts.map(a => a.report) };
   }
-  root.EnglishSpeakingQueue = { SCHEMA_VERSION:SPEAKING_SCHEMA_VERSION, PHASES, REASONS, ITEM_STATES, TERMINAL_ITEM_STATES, stable, version, isQueueReport, isSimplifiedReport, isExecutionGateReport, isCurrentItemReport, isRuntimeIntegrityReport, advanceRequiredQueue, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget, capitalizationChoice };
+  root.EnglishSpeakingQueue = { SCHEMA_VERSION:SPEAKING_SCHEMA_VERSION, PHASES, REASONS, ITEM_STATES, TERMINAL_ITEM_STATES, stable, version, isQueueReport, isSimplifiedReport, isExecutionGateReport, isCurrentItemReport, isRuntimeIntegrityReport, advanceRequiredQueue, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget, capitalizationChoice, detectImportantLanguageIssues, retrySatisfiesItem, decideCurrentItemTransition };
 })(globalThis);
 
 // END GENERATED speaking-queue.js
@@ -793,6 +859,8 @@ function formatSpeakingBrief(data, id, s) {
       utteranceReliability:'confirmed|likely|uncertain', transcriptionIssue:false,
       semanticGuessUsed:false, learnerFinished:true, modelOnly:false,
       coachSuppliedAnswer:false, independentAfterCoachAnswer:false,
+      importantLanguageError:false,
+      importantCorrectionCategories:[],
       resolution:{
         hearing:'clear|clarified|unresolved',
         clarificationPrompt:'', clarificationResponse:'',
@@ -843,11 +911,20 @@ function formatSpeakingBrief(data, id, s) {
     correctionChecks:[], targetsUsedWell:[], targetsToReview:[],
     grammarToReview:[], pronunciationNotes:[], betterExpressions:[], overallNotes:[]
   };
+  const compactCorrection = c => ({
+    correctionId:c.correctionId,target:c.target,round:c.round,
+    originalAnswer:c.originalAnswer,gptSuggestedAnswer:c.gptSuggestedAnswer,
+    learnerCorrection:c.learnerCorrection,correctionStatus:c.correctionStatus,
+    teachingFeedback:c.teachingFeedback ? {
+      issue:c.teachingFeedback.issue,
+      ruleOrPattern:c.teachingFeedback.ruleOrPattern
+    } : null
+  });
   const reviewContext = {
-    currentLessonCorrections:data.currentLessonCorrections,
-    olderReviewCorrections:data.olderReviewCorrections,
-    reviewItems:data.reviewItems,
-    learningFocus:data.learningFocus
+    currentLessonCorrections:(data.currentLessonCorrections||[]).map(compactCorrection),
+    olderReviewCorrections:(data.olderReviewCorrections||[]).map(compactCorrection),
+    reviewItems:(data.reviewItems||[]).map(x=>({target:x.target,component:x.component,reasons:x.reasons})),
+    speakingPriorities:data.learningFocus?.suggestionsToVerify||null
   };
   return `SPEAKING ${s.attemptCount ? 'CONTINUATION' : 'PRACTICE'} · V${SPEAKING_SCHEMA_VERSION}
 
@@ -904,6 +981,25 @@ Important correction: correctionLock must finish as retried or explicitly declin
 Final Challenge is permitted ONLY when remainingCoverage === 0, currentRequiredItem === null, correctionLockCount === 0, allEvidenceValid === true, and the Pre-Final audit passes. Otherwise Final Challenge is BLOCKED.
 Normal completion requires a complete Final Challenge, its feedback/correction, and a final audit. Never claim completion from conversation length or general performance.
 
+MANDATORY DECISION BEFORE EVERY ADVANCE
+Target produced is only the Target Gate. It never resolves Coverage by itself.
+After the learner's complete turn, silently decide in this exact order:
+1. Is hearing clear? If no, clarify and WAIT.
+2. Did the learner produce the exact target/task? If no, elicit it and WAIT.
+3. Is there an important language error? Check every category below.
+4. If yes: set CORRECTION_REQUIRED, give My sentence / Better / Why, say “Now try it again,” set AWAITING_RETRY, and WAIT.
+5. A recast, paraphrase, praise, “got it,” or Coach model is never Retry evidence.
+6. Advance only after a complete acceptable Learner Retry, or an explicit refusal.
+
+BLOCKING CORRECTION CATEGORIES
+missing be verb; wrong tense; wrong verb form; third-person singular; important article/determiner; singular/plural; important preposition; incomplete core sentence structure; target misuse; meaning-changing error; recurring important grammar weakness.
+
+KNOWN ACCEPTANCE CASES — THESE MUST BLOCK
+- “I have a one niece. She is very kind a girl.” → “I have one niece. She is a very kind girl.” Then require Retry.
+- “My ancestor sell pork in market.” → “My ancestor sold pork in the market.” Then require Retry.
+- “I have two sibling.” → “I have two siblings.” Then require Retry.
+Never say “You used the target well. Now let's move on” while any blocking error remains.
+
 COACHING RULES
 
 ASK SIMPLE, NATURAL QUESTIONS
@@ -945,6 +1041,7 @@ Better: <natural corrected version>
 Why: <short reason; Traditional Chinese may help>
 Now try it again.
 Then WAIT for the whole Retry. Do not move on because the learner understood the explanation.
+Recasting the sentence yourself does not complete Correction. The Learner must say the corrected form.
 Before correcting, compare Better with the actual utterance. If they are already the same, retract the correction, do not create a learner weakness, and optionally report false_correction.
 Praise must never replace correction. “Great job! Next question.” is prohibited while an important error is unresolved.
 For a spouse example, “We don't have married” needs “We're not married”; “if my boyfriend marry me” needs “if my boyfriend marries me”. Then say “Now try it again.”
@@ -960,6 +1057,13 @@ If asked “Did we practice everything?”, “Have you lost any words?”, or�
 If Grammar completed is 0/3, say: “We haven't practiced the grammar part yet. We still have three grammar items left.”
 If Grammar completed is 1/3, say: “We practiced one grammar rule. We still have two left.”
 When all Required items pass, run the Pre-Final audit. Then ask one Final Challenge for 2–3 connected sentences using 2–3 suitable targets. WAIT, give feedback, handle any important correction and Retry, then run the Final audit.
+
+VOCABULARY → GRAMMAR TRANSITION
+After the fifth Vocabulary resolves, recompute FIRST unresolved. It must be Grammar 1, never wrap-up, optional conversation, or Final Challenge.
+Grammar 1 (title_with_name, expectedAnswer=capital): ask an independent question such as “In ‘Aunt Mary,’ should ‘Aunt’ start with a capital letter or a lowercase letter?”
+After Grammar 1 resolves, ask Grammar 2 (title_replacing_name, expectedAnswer=capital) with a new independent example.
+After Grammar 2 resolves, ask Grammar 3 (possessive_title, expectedAnswer=lowercase): “In ‘my mom,’ should ‘mom’ start with a capital letter or a lowercase letter?”
+If the Learner answers Capital for “my mom,” it is incorrect. Explain that a title after a possessive is lowercase, request “Lowercase” as Retry, and WAIT. “Next” or “Keep going” continues Required Grammar; it never skips it.
 
 REVIEW CONTEXT — COACHING PRIORITY ONLY, NEVER REQUIRED COVERAGE
 Use this only when it fits naturally. It never adds queue items or completion gates:

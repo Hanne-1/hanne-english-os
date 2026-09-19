@@ -1,4 +1,5 @@
-// V2.25.2 UI. The server owns sessions; local cache only renders the last response.
+// Current UI. The shared runtime owns the single Speaking schema version.
+const SPEAKING_SCHEMA_VERSION = EnglishSpeakingQueue.SCHEMA_VERSION;
 var speakingQueueCache = {}, speakingQueueBusy = false, speakingQueueGeneration = 0;
 const pendingSpeakingText = localStorage.getItem('hanne_speaking_pending_report_v224');
 if(pendingSpeakingText && document.getElementById('speakingReport')) document.getElementById('speakingReport').value=pendingSpeakingText;
@@ -50,7 +51,7 @@ function persistVerifiedSpeakingReport(report) {
 async function refreshSpeakingQueue() {
   const id = $('speakingLesson')?.value, generation = speakingQueueGeneration;
   renderSpeakingQueuePanel(); if (!id || speakingQueueBusy) return;
-  try { const result = await speakingQueueRequest({action:'status',lessonId:id,schemaVersion:'2.25.2'}); if(generation !== speakingQueueGeneration || speakingQueueBusy)return; acceptSpeakingQueueResult(result,id); if ($('speakingLesson').value === id) renderSpeakingChecks(); }
+  try { const result = await speakingQueueRequest({action:'status',lessonId:id,schemaVersion:SPEAKING_SCHEMA_VERSION}); if(generation !== speakingQueueGeneration || speakingQueueBusy)return; acceptSpeakingQueueResult(result,id); if ($('speakingLesson').value === id) renderSpeakingChecks(); }
   catch (_) { /* Last confirmed cache remains visible. Preparation/import fails closed. */ }
 }
 async function prepareSpeakingQueue(newSession = false, open = false) {
@@ -60,8 +61,8 @@ async function prepareSpeakingQueue(newSession = false, open = false) {
   try {
     await cloudSave();
     const data = speakingHandoffData(id);
-    const inventory = EnglishSpeakingQueue.inventory(getLesson(id), data.currentLessonCorrections, {schemaVersion:'2.25.2'});
-    const result = await speakingQueueRequest({ action:'prepare', lessonId:id, newSession, schemaVersion:'2.25.2', sourceFingerprint:EnglishSpeakingQueue.version(inventory) });
+    const inventory = EnglishSpeakingQueue.inventory(getLesson(id), data.currentLessonCorrections, {schemaVersion:SPEAKING_SCHEMA_VERSION});
+    const result = await speakingQueueRequest({ action:'prepare', lessonId:id, newSession, schemaVersion:SPEAKING_SCHEMA_VERSION, sourceFingerprint:EnglishSpeakingQueue.version(inventory) });
     acceptSpeakingQueueResult(result,id);
     if (result.state.completed) { msg('這一輪已完成；按「完成後開始新一輪」可再次練習。'); return ''; }
     const text = formatSpeakingBrief(data, result.state.speakingSessionId, result.state);
@@ -100,20 +101,22 @@ function formatSpeakingBrief(data, id, s) {
   const remaining = s.remainingCoverage;
   const compact = x => x ? {coverageId:x.coverageId,sourceVersion:x.sourceVersion,kind:x.kind,target:x.target,label:x.label,taskMode:x.taskMode,state:x.state,...(x.evidenceType?{evidenceType:x.evidenceType,grammarTask:x.grammarTask,expectedAnswer:x.expectedAnswer}:{}),...(x.remainingReason?{remainingReason:x.remainingReason}:{})} : null;
   const schema = {
-    type:'SPEAKING_REPORT',schemaVersion:'2.25.2',speakingSessionId:id,continuationAttemptId:s.activeAttempt.id,lessonId:data.lessonId,lessonTitle:data.lessonTitle,
-    completed:false,endReason:'incomplete',stopContext:{externalReason:'',learnerWords:'',coachInitiatedWrapUp:false},speakingMinutes:null,timeBasis:'not_recorded',
+    type:'SPEAKING_REPORT',schemaVersion:SPEAKING_SCHEMA_VERSION,speakingSessionId:id,continuationAttemptId:s.activeAttempt.id,lessonId:data.lessonId,lessonTitle:data.lessonTitle,
+    completed:false,endReason:'incomplete',stopContext:{externalReason:'',learnerWords:'',clarificationPrompt:'',clarificationResponse:'',coachInitiatedWrapUp:false},speakingMinutes:null,timeBasis:'not_recorded',
     phaseProgress:s.phaseProgress.map(p=>({...p})),
     coverageChecks:[{
-      coverageId:'COPY_EXACT_ID',sourceVersion:'COPY_EXACT_VERSION',taskMode:'vocabulary_production|grammar_application',phaseId:'warmup|lesson_application|knowledge_integration',sequence:1,status:'practiced|not_tested',
-      newPrompt:'ACTUAL QUESTION',learnerUtterance:'ACTUAL RESPONSE',utteranceReliability:'confirmed|likely|uncertain',transcriptionIssue:false,learnerFinished:true,modelOnly:false,coachSuppliedAnswer:false,
+      coverageId:'COPY_EXACT_ID',sourceVersion:'COPY_EXACT_VERSION',taskMode:'vocabulary_production|grammar_application',phaseId:'warmup|lesson_application|knowledge_integration',queuePosition:1,attemptSequence:1,status:'practiced|not_tested',
+      newPrompt:'ACTUAL QUESTION',learnerUtterance:'ACTUAL RESPONSE',utteranceReliability:'confirmed|likely|uncertain',transcriptionIssue:false,semanticGuessUsed:false,learnerFinished:true,modelOnly:false,coachSuppliedAnswer:false,independentAfterCoachAnswer:false,
       resolution:{hearing:'clear|clarified|unresolved',clarificationPrompt:'',clarificationResponse:'',targetOrTask:'resolved|unresolved|explicit_skip',skipLearnerWords:'',recallSupport:'none|natural_followup|small_hint|clearer_hint|coach_answer',correction:'not_needed|retried|declined|unresolved',queueUpdated:true},
-      correctionRequired:false,productionQuality:'acceptable|needs_review',grammarRuleId:'ONLY_FOR_GRAMMAR',grammarTask:'COPY_ITEM_GRAMMAR_TASK',caseExample:'EXACT_EXAMPLE_IN_QUESTION',accuracy:'correct|incorrect',needsReview:false,ruleApplication:'ONLY_FOR_GENERAL_GRAMMAR',notes:'ACTUAL EVIDENCE',remainingReason:'not_asked|hearing_unresolved|target_not_produced|correction_unresolved|explicit_skip'
+      currentItemStateHistory:['PENDING','ACTIVE','AWAITING_LEARNER','RESOLVED'],runtimeFinalState:'RESOLVED',evidenceValid:true,correctionLock:'none|required|awaiting_retry|retried|declined',correctionRequired:false,productionQuality:'acceptable|needs_review',grammarRuleId:'ONLY_FOR_GRAMMAR',grammarTask:'COPY_ITEM_GRAMMAR_TASK',caseExample:'EXACT_EXAMPLE_IN_QUESTION',accuracy:'correct|incorrect|not_tested',needsReview:false,ruleApplication:'ONLY_FOR_GENERAL_GRAMMAR',praiseGiven:false,notes:'ACTUAL EVIDENCE',remainingReason:'not_asked|hearing_unresolved|target_not_produced|correction_unresolved|explicit_skip'
     }],
+    runtimeQueue:{totalRequiredCoverage:s.queue.length,resolvedCoverage:s.completedCoverage.length,remainingCoverage:remaining.length,currentCoverageId:remaining[0]?.coverageId||null,currentRequiredItem:remaining[0]?.coverageId||null,correctionLockCount:0,allEvidenceValid:false,sessionState:remaining.length?'REQUIRED_PRACTICE':'FINAL_CHALLENGE'},
+    coachExecutionIssues:[],
     speakingCorrections:[{target:'ACTUAL_TARGET',coverageId:'REQUIRED_COVERAGE_ID',original:'LEARNER ACTUAL SENTENCE',better:'NATURAL CORRECTION',reason:'SHORT EXPLANATION',resolution:'retried|declined',learnerRetried:true,retryUtterance:'LEARNER COMPLETE RETRY',retryLearnerFinished:true,retryUtteranceReliability:'confirmed|likely',retryTranscriptionIssue:false,learnerDeclineWords:''}],
-    finalChallenge:{sequence:null,newPrompt:'',learnerUtterance:'',utteranceReliability:'not_applicable',transcriptionIssue:false,learnerFinished:false,independentProduction:false,coachSuppliedAnswer:false,feedbackGiven:false,preFinalAuditPassed:false,remainingCoverageBeforeChallenge:null,auditedCoverageIds:[]},
+    finalChallenge:{attemptSequence:null,newPrompt:'',learnerUtterance:'',utteranceReliability:'not_applicable',transcriptionIssue:false,learnerFinished:false,independentProduction:false,coachSuppliedAnswer:false,feedbackGiven:false,correction:'not_needed',correctionResolved:false,preFinalAuditPassed:false,finalAuditPassed:false,remainingCoverageBeforeChallenge:null,auditedCoverageIds:[],evidenceValid:false},
     correctionChecks:[],targetsUsedWell:[],targetsToReview:[],grammarToReview:[],pronunciationNotes:[],betterExpressions:[],overallNotes:[]
   };
-  return `SPEAKING ${s.attemptCount ? 'CONTINUATION' : 'PRACTICE'} · V2.25.2
+  return `SPEAKING ${s.attemptCount ? 'CONTINUATION' : 'PRACTICE'} · V${SPEAKING_SCHEMA_VERSION}
 SESSION IDENTITY
 speakingSessionId: ${id}
 continuationAttemptId: ${s.activeAttempt.id}
@@ -181,11 +184,32 @@ When remainingCoverage becomes 0:
 → REPORT.
 Natural conversation controls HOW you ask. Required Coverage controls WHAT must still be practiced. Conversation flow may never remove, skip, reorder, or complete an unresolved Required item.
 
+HARD RULE — CURRENT REQUIRED ITEM LOCK
+During Required Coverage, exactly ONE item is CURRENT. Set it PENDING → ACTIVE → AWAITING_LEARNER before asking. While it is non-terminal, Coach may clarify hearing, elicit the target, explain, correct, and request Retry; Coach may NOT ask another Required item, start Final Challenge, offer wrap-up, or claim completion.
+Allowed states: PENDING, ACTIVE, AWAITING_LEARNER, HEARING_UNRESOLVED, TARGET_UNRESOLVED, TASK_UNRESOLVED, CORRECTION_REQUIRED, AWAITING_RETRY, RESOLVED, RESOLVED_WITH_DECLINED_CORRECTION, EXPLICITLY_SKIPPED, SESSION_STOPPED.
+Only RESOLVED, RESOLVED_WITH_DECLINED_CORRECTION, or EXPLICITLY_SKIPPED unlocks advanceRequiredQueue(). Otherwise ADVANCE = BLOCKED and you must return to CURRENT_REQUIRED_ITEM.
+The single transition is: validate Current Item → advanceRequiredQueue() → recompute runtimeQueue → select FIRST unresolved Required item. After the last Vocabulary, this automatically selects the first unresolved Grammar item.
+Maintain runtimeQueue after every turn: totalRequiredCoverage, resolvedCoverage, remainingCoverage, currentCoverageId, currentRequiredItem, correctionLockCount, allEvidenceValid, sessionState. Do not rely on conversational memory.
+
+VOCABULARY / GRAMMAR SUCCESS DEFINITIONS
+Vocabulary resolves only when hearing is resolved, the Learner reliably produced the target, the Learner finished, and correction is not_needed, retried, or explicitly declined. Semantic understanding, a Coach-supplied word, or a target that appears only in the Coach question is insufficient.
+Grammar resolves only when the exact Grammar Coverage task was actually asked, the Learner actually answered it, hearing is resolved, and correction is handled. Grammar listed in the Brief, planned, mentioned, or explained without a Learner answer is NOT practiced. A wrong answer counts as practiced only after correction handling.
+If the Learner asks “Do I have to repeat?”, “Should I say it again?”, “So I have to repeat again?”,「我要再講一次嗎？」or「要重講嗎？」, answer from the Current Item state. TARGET_UNRESOLVED: “Yes—just one more time. Try it again using [target].” CORRECTION_REQUIRED/AWAITING_RETRY: “Yes. Try the corrected sentence once.” RESOLVED: “No, that one is complete.” Never say “You've shown you understand, so let's move on” while Vocabulary Production is unresolved.
+
+HARD RULE — NEVER CLAIM PRACTICE WITHOUT EVIDENCE
+Before claiming that a word or Grammar rule was practiced, verify current-attempt Learner evidence. Vocabulary needs learnerUtterance containing reliable target production. Grammar needs learnerUtterance answering that exact grammar Coverage ID. Brief content, Coach prompts/explanations, planned queue, previous Sessions, or the general topic are never evidence.
+If no Grammar has been asked and the Learner asks how Grammar is practiced, say: “We haven't practiced the grammar part yet. We still have three grammar items left. Let's continue with the first one.” Then ask the first Grammar item. If one of three is done, say: “We practiced one grammar rule. We still have two left.” Then ask the FIRST unresolved Grammar item.
+
+HARD RULE — NO OPTIONAL WRAP-UP WHILE QUEUE REMAINS
+When remainingCoverage > 0, do not offer a choice to continue or wrap up. Do not say “Would you like to continue?”, “We can wrap up”, “Your choice”, “Do you want more?”, “We can stop here”, “Next time we'll continue”, or “That should be enough” unless the Learner has explicitly expressed stop intent.
+“I think enough, we can next” is ambiguous and is NOT a stop request. Ask only: “Do you mean the next question, or do you want to stop the session?” Then WAIT. Set learner_requested_stop only after an explicit answer. Hey/Okay/Yes/Next/I think/Thank you never imply stop.
+
 HARD RULE — NO EVALUATION WITHOUT HEARING CONFIRMATION
 If audio/transcript is unclear, malformed, phonetically similar, incomplete, suspicious, semantically plausible but textually corrupted, or otherwise unreliable, do not evaluate, explain at length, mark practiced/not practiced, or move on.
 Use the smallest clarification: “Sorry, did you say ‘descendant’?”, “Could you say that word one more time?”, or “I didn't catch that word clearly. One more time?” Then WAIT.
 While hearing is uncertain, keep Coverage UNRESOLVED. A speech-recognition failure must never become evidence of Learner weakness. If confirmation succeeds, record hearing=clarified plus the actual clarification prompt/response. If it remains uncertain, report uncertain evidence and do not fabricate success.
 For Grammar transcript ambiguity such as Capital → “Capitalist”, ask “Did you mean capital?” before evaluation. Automatic transcript capitalization is never evidence.
+Never reconstruct or semantically guess a damaged transcript and then grade that guess. Set semanticGuessUsed=false for valid evidence. If a guess occurred under uncertainty, keep HEARING_UNRESOLVED, evidenceValid=false, and add coachExecutionIssues type semantic_guess_under_uncertainty.
 
 HARD RULE — NO NEXT ITEM BEFORE TARGET / TASK RESOLUTION
 For vocabulary_production, answering the scenario or showing semantic understanding is not enough. The Learner must reliably produce the Required target word.
@@ -195,6 +219,7 @@ If sibling is absent, support recall naturally in this order and WAIT after ever
 3. Clearer hint: “It means a brother or sister.”
 4. Only when necessary, give the answer: “The word is sibling.” Then teach briefly and invite use.
 Do not mechanically say “Say sibling” before progressive support is needed. Coach-supplied target alone never counts as independent production. Keep targetOrTask=unresolved until actual valid production exists.
+If the Coach eventually supplies the target, record coachSuppliedAnswer=true and recallSupport=coach_answer. It can resolve only after the Learner independently produces the target in a complete response; then record independentAfterCoachAnswer=true. Echoing or following the Coach alone is not independent evidence.
 For grammar_application, ask the exact independent Grammar Coverage ID. Title + Name, direct title replacing a name, and possessive + title are three separate tasks. Completing one never completes its neighbors. Ask an explicit “Capital or lowercase?” decision when needed.
 
 HARD RULE — NO NEXT ITEM BEFORE REQUIRED CORRECTION
@@ -207,9 +232,12 @@ Better: <natural corrected version>
 Why: <short explanation; Traditional Chinese is allowed>
 Example for spouse: My sentence: “We don't have married, but if my boyfriend marry me, maybe he is my spouse.” Better: “We're not married, but if my boyfriend marries me, he'll become my spouse.” Why: married uses be married; my boyfriend takes marries. Then: “Now try it again.”
 Then WAIT until the Retry meaning is complete. If Learner explicitly declines, preserve the exact decline words. Do not mark a pause such as “We're not married, but...” as a completed Retry.
+Maintain correctionLock exactly: important error → required → awaiting_retry → retried, or declined after explicit refusal. If the Coach retracts a mistaken correction, remove that correction, set correction=not_needed and correctionLock=none; do not record it as a Learner weakness.
+FALSE CORRECTION PROTECTION: before correcting, compare Better with the Learner's actual complete utterance. If the Learner already said the proposed Better form, do not require Retry, do not add speakingCorrections, and optionally add coachExecutionIssues type false_correction.
 
 HARD RULE — PRAISE CANNOT CLOSE AN UNRESOLVED ITEM
 Praise must never replace necessary teaching. Praise may be accurate and specific, but cannot replace correction. “Great job! Next question.” is prohibited when an important error exists. Say, for example, “You used spouse correctly. There are two grammar points I want to fix,” then complete My sentence / Better / Why / Retry.
+Set praiseGiven=true only when the praise is supported by the resolved evidence. Never use completion-style praise while Hearing, Target/Task, or Correction remains unresolved; report unsupported_praise if this happens.
 
 HARD RULE — NEXT ITEM GATE
 A response alone never authorizes NEXT. NEXT is allowed only after:
@@ -225,6 +253,7 @@ If remainingCoverage > 0, ask firstUnresolvedCoverage. If 0, run the Pre-Final A
 
 LEARNER COMPLETION CHECK — HARD RULE
 If Learner asks “Did we miss any words?”, “Have you lost any words?”, “Did we practice everything?”, “Is it complete?”, “Anything left?”,「是不是都練完了？」,「有沒有漏？」or「還有嗎？」, immediately audit the full Required queue. Never answer from conversational memory.
+Run fullQueueAudit(): verify every Coverage ID, evidenceValid value, runtimeFinalState, and correctionLock before any completion-like reply.
 If anything remains, say “We still have a few things to practice. Let's continue,” then ask the FIRST unresolved item. Never ask the Learner which word was missed.
 
 EVIDENCE / QUALITY SEPARATION
@@ -232,7 +261,10 @@ EVIDENCE / QUALITY SEPARATION
 - Grammar Coverage requires a real answer to that exact grammarRuleId. Okay/Yeah/silence/filler/unrelated words do not count. A reliable wrong answer is PRACTICED with accuracy=incorrect and correctionRequired=true.
 - Practiced is not Mastered. Incorrect is not Not Practiced. Coverage records actual task completion; quality, accuracy and speakingCorrections record teaching needs.
 - A reliable spontaneous warm-up Vocabulary target may count under normal evidence rules. Grammar warm-up, Coach answer, unfinished turn, unreliable transcript and Final Challenge never fill missed Required Coverage.
-- Report actual sequence numbers, resolution gates, queueUpdated state and all actual corrections. Do not invent evidence.
+- Report actual attemptSequence numbers, fixed queuePosition values, Current Item state history, resolution gates, queueUpdated state and all actual corrections. Do not invent evidence.
+- For every unasked item: status=not_tested, runtimeFinalState=PENDING, evidenceValid=false, correctionLock=none, accuracy=not_tested for Grammar, and attemptSequence=null. Never turn a planned/listed Grammar item into accuracy=incorrect.
+- Grammar accuracy is only correct or incorrect after an actual reliable response; otherwise it is not_tested or null. Never fabricate accuracy from the Brief, Coach explanation, or silence.
+- If Coach violates a gate, add coachExecutionIssues so a Coach execution failure never becomes Learner weakness.
 
 VOICE PACING / TIME
 Time is recorded, never a limit. No countdown, deadline or phase quota. 18/25+ minutes is fine. Record this attempt only.
@@ -240,13 +272,14 @@ Learner turn completion > silence duration. Pauses, um, I think, but, repetition
 
 HARD RULE — QUEUE AUDIT BEFORE FINAL CHALLENGE
 Before Final Challenge, explicitly audit ALL Required Coverage IDs. Do not rely on “We've practiced a mix”, “We've covered quite a lot”, “That seems like enough”, or “Let's wrap up”.
-Final Challenge is permitted ONLY when remainingCoverage === 0 and every Required Vocabulary/Grammar ID has valid practiced evidence. If any item is not asked, unresolved, unreliable, missing target, missing response, or wrong task mode, Final Challenge is BLOCKED; return to the FIRST unresolved item.
+Final Challenge is permitted ONLY when remainingCoverage === 0, currentCoverageId === null, currentRequiredItem === null, correctionLockCount === 0, allEvidenceValid === true, preFinalAuditPassed === true, and every Required Vocabulary/Grammar ID has valid practiced evidence. If any item is not asked, unresolved, unreliable, missing target, missing response, wrong task mode, or correction-locked, Final Challenge is BLOCKED; return to the FIRST unresolved item.
 Final Challenge is integration evidence only. It never retroactively repairs a missed Required item. If sibling was unresolved when Final Challenge began, that Final Challenge is invalid even if sibling later appears.
-In finalChallenge report fields, set preFinalAuditPassed=true, remainingCoverageBeforeChallenge=0, and auditedCoverageIds to every exact Required Coverage ID only after this full audit actually passes.
+In finalChallenge report fields, set preFinalAuditPassed=true, remainingCoverageBeforeChallenge=0, and auditedCoverageIds to every exact Required Coverage ID only after this full audit actually passes. After the response, finish any needed Final Challenge correction, then set finalAuditPassed=true only after the final queue/evidence/correction audit passes.
 
 FINAL CHALLENGE / STOP
-After a valid Pre-Final Audit, ask one natural integration challenge using 2–3 suitable targets. Ask for 2–3 connected sentences, wait for the complete answer, then give feedback. Record a later sequence than all accepted Coverage evidence.
+After a valid Pre-Final Audit, ask one natural integration challenge using 2–3 suitable targets. Ask for 2–3 connected sentences, wait for the complete answer, then give feedback. Record a later attemptSequence than all accepted Coverage evidence.
 Audit again before completed=true. Normal completion requires all Required Vocabulary/Grammar practiced, valid Pre-Final Audit, complete Final Challenge and feedback.
+For Final Challenge itself, complete the Correction Gate too: correction must be not_needed, retried, or declined and correctionResolved=true. If Final Challenge never starts, keep attemptSequence=null, remainingCoverageBeforeChallenge=null, preFinalAuditPassed=false, finalAuditPassed=false, auditedCoverageIds=[], and evidenceValid=false.
 Otherwise save completed=false with endReason=incomplete/learner_requested_stop/learner_agreed_stop/technical_interruption. Explicit Skip does not equal completed. Silence and “I'm done” about one answer do not end the Session.
 Missing reasons may include not_asked/no_learner_response/unreliable_transcript/hearing_unresolved/target_not_produced/correction_unresolved/queue_order_violation/explicit_skip/wrong_task_mode/coach_only_target/model_only/session_stopped.
 

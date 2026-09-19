@@ -233,6 +233,7 @@
       const falseCorrection=falseCorrections.find(c=>c.coverageId===item.coverageId);
       if(falseCorrection){e.productionQuality='acceptable';e.needsReview=false;e.correctionRequired=false;e.resolution={...(e.resolution||{}),correction:'not_needed'};e.correctionLock='none';if(finalStateOf(e,raw.schemaVersion)!=='RESOLVED'){e.runtimeFinalState='RESOLVED';e.finalItemState='RESOLVED';if(Array.isArray(e.currentItemStateHistory)){e.currentItemStateHistory=e.currentItemStateHistory.filter(x=>!['CORRECTION_REQUIRED','AWAITING_RETRY'].includes(x));if(e.currentItemStateHistory.at(-1)!=='RESOLVED')e.currentItemStateHistory.push('RESOLVED');}}}
       let result = assess(item, e, raw.schemaVersion);
+      const assessedAccuracy = result.accuracy;
       if(integrity&&e.semanticGuessUsed===true&&(!['clear','clarified'].includes(e.resolution?.hearing)||e.transcriptionIssue!==false)){issue('semantic_guess_under_uncertainty',item,'ASR 未確認時不得猜測 Learner 原意。');result={ok:false,remainingReason:'hearing_unresolved',validationNote:'ASR 未確認且使用 semantic guess；保持 Hearing Lock。'};}
       const needsCorrection = result.ok && (e.productionQuality === 'needs_review' || e.needsReview === true || result.accuracy === 'incorrect');
       const correction = speakingCorrections.find(c => c.coverageId === item.coverageId);
@@ -249,7 +250,7 @@
         if (stateProblem) { issue(stateProblem.issue,item,stateProblem.validationNote); result={ok:false,remainingReason:stateProblem.remainingReason,validationNote:stateProblem.validationNote}; }
       }
       if(integrity&&e.praiseGiven===true&&!result.ok)issue('unsupported_praise',item,'Item 尚未 resolved，不得用完成式 praise 關閉。');
-      evaluated.push({e,item,result,inputIndex,needsCorrection,correction});
+      evaluated.push({e,item,result,inputIndex,needsCorrection,correction,assessedAccuracy});
     }
     if (isExecutionGateReport(raw)) {
       const unresolved = s.activeAttempt.items.map(x => x.coverageId);
@@ -268,12 +269,15 @@
         if(row.result.ok||explicitSkip)advanceRequiredQueue(unresolved,row.item.coverageId,finalStateOf(row.e,raw.schemaVersion),!strict);
       }
     }
-    for (const {e,item,result,needsCorrection,correction} of evaluated) {
+    for (const {e,item,result,needsCorrection,correction,assessedAccuracy} of evaluated) {
       if (seen.has(item.coverageId)) warnings.push('同項有多筆嘗試；保留已取得的有效證據。'); seen.add(item.coverageId);
       const finalState=finalStateOf(e,raw.schemaVersion)||'PENDING';
       const normalized={...clone(e),...result,status:result.ok?'practiced':'not_tested',label:item.label,target:item.target,kind:item.kind,lessonId:item.lessonId};
       if(integrity){normalized.runtimeFinalState=finalState;delete normalized.finalItemState;normalized.evidenceValid=result.ok&&['RESOLVED','RESOLVED_WITH_DECLINED_CORRECTION'].includes(finalState);normalized.correctionLock=expectedCorrectionLock(result,needsCorrection,correction,finalState);}
-      if(strict&&item.kind==='grammar'&&normalized.status==='not_tested'){if(normalized.accuracy&&normalized.accuracy!=='not_tested')issue('fabricated_accuracy',item,'未實際取得可靠 Grammar 回答，不可回報 incorrect/correct。');normalized.accuracy='not_tested';}
+      if(strict&&item.kind==='grammar'&&normalized.status==='not_tested'){
+        if(['correct','incorrect'].includes(assessedAccuracy))normalized.accuracy=assessedAccuracy;
+        else{if(normalized.accuracy&&normalized.accuracy!=='not_tested')issue('fabricated_accuracy',item,'未實際取得可靠 Grammar 回答，不可回報 incorrect/correct。');normalized.accuracy='not_tested';}
+      }
       checks.push(normalized);
       if(result.ok){item.state='PRACTICED';item.evidence={...clone(e),...result,evidenceValid:true,runtimeFinalState:finalState,correctionLock:normalized.correctionLock,attemptId:raw.continuationAttemptId};delete item.remainingReason;delete item.validationNote;item.correctionLock='none';}
       else if(!practiced(item)){Object.assign(item,result,{correctionLock:normalized.correctionLock||'none',runtimeFinalState:finalState});}

@@ -1,18 +1,23 @@
-# Hanne's English OS V2.25.4
+# Hanne's English OS Speaking V2.25.4 — Clean Rebuild
 
-V2.25.4 將 Speaking 改為由伺服器驗證的 Runtime State Lock。每次只允許一個 Current Required Item；Hearing、Target/Task、Correction、Retry、Evidence、Pre-Final 與 Final Audit 都必須通過後才可前進。
+本版從實際 V2.25.3 穩定提交 `79482eb` 重建，保留 Current Item Lock、Coverage Queue、Voice Start、Hearing Confirmation、Correction Retry 與 Final Challenge gate。
 
-## 主要變更
+## 本次最小修正
 
-- Speaking schema 的單一版本來源為 `EnglishSpeakingQueue.SCHEMA_VERSION`，新 Brief 與 Report 固定為 `2.25.4`。
-- 新增 `runtimeFinalState`、`evidenceValid`、`correctionLock`、`queuePosition`、`attemptSequence`。
-- ASR 不確定時維持 Hearing Lock，不可猜測語意或轉成學習錯誤。
-- Coach 提供答案後，必須有 Learner 後續獨立產出才可成立。
-- Correction／Retry 未完成時禁止換題；錯誤訂正會被撤銷並記為 Coach issue，不會成為 Learner weakness。
-- Grammar 未實際回答時保持 `not_tested`，三個 Grammar Coverage ID 分別驗證。
-- Final Challenge 前要求完整 Coverage 與 Correction audit；Final 後再做 Final Audit。
-- 舊版 2.25.2／2.25.3 報告仍可讀取；未完成場次保留已驗證進度、清除舊 active attempt，並記錄 migration metadata 後改用 2.25.4。
+- Speaking Brief 分為 `SPEAKING CONTROLLER`、`COACHING RULES` 與最末端隔離的 `REPORT GENERATION ONLY`。
+- Voice 進入後直接開始，用短而自然的問題；學習者說不懂時簡化同一題。
+- 停頓、找字與自我修正不算回答結束；Coach 不搶答、不提前訂正。
+- 聽辨不清時先確認，不用語意猜測補寫轉錄。
+- Vocabulary 必須由學習者實際產出 target；Coach 提供答案後仍需新的獨立回答。
+- 重要錯誤完成 Retry 或明確拒絕後才可前進；相同原句與建議句不建立錯誤紀錄。
+- `Next` 與確認繼續的 `Yes` 只代表進入下一題，不代表結束。
+- Grammar 逐一使用伺服器 `expectedAnswer` 驗證，三個 Grammar Coverage ID 互相獨立。
+- Final Challenge 只在 Required Coverage、Correction Lock 與證據檢查全部通過後開放。
+
+## Report 2.25.4
+
+保留 `queuePosition`、`attemptSequence`、`runtimeFinalState`、`evidenceValid`、`correctionLock`、`coachExecutionIssues`，並維持 `accuracy: correct | incorrect | not_tested | null`。未提問項目固定保留 `not_tested`、`attemptSequence: null` 與 `evidenceValid: false`。
 
 ## 驗證
 
-執行 `npm test` 與 `npm run build`。`tests/runtime-integrity.test.mjs` 涵蓋 18 組 Voice 實測回歸情境。
+新增 10 個 clean rebuild checkpoints，並與原 Coverage、Current Item Lock、Runtime Integrity、UI 回歸測試一起執行。

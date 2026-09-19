@@ -1,8 +1,11 @@
-/* Shared, deterministic V2.25.2 coverage and execution-gate rules. No DOM, storage, network, or model calls. */
+/* Shared, deterministic Speaking runtime rules. New sessions use one schema source. */
 (function (root) {
   'use strict';
+  const SPEAKING_SCHEMA_VERSION = '2.25.4';
   const PHASES = ['warmup', 'lesson_application', 'knowledge_integration', 'final_challenge'];
   const REASONS = ['not_asked', 'no_learner_response', 'unreliable_transcript', 'hearing_unresolved', 'target_not_produced', 'correction_unresolved', 'queue_order_violation', 'explicit_skip', 'wrong_task_mode', 'coach_only_target', 'model_only', 'session_stopped'];
+  const ITEM_STATES = ['PENDING', 'ACTIVE', 'AWAITING_LEARNER', 'HEARING_UNRESOLVED', 'TARGET_UNRESOLVED', 'TASK_UNRESOLVED', 'CORRECTION_REQUIRED', 'AWAITING_RETRY', 'RESOLVED', 'RESOLVED_WITH_DECLINED_CORRECTION', 'EXPLICITLY_SKIPPED', 'SESSION_STOPPED'];
+  const TERMINAL_ITEM_STATES = ['RESOLVED', 'RESOLVED_WITH_DECLINED_CORRECTION', 'EXPLICITLY_SKIPPED'];
   const text = x => typeof x === 'string' ? x : '';
   const clone = x => JSON.parse(JSON.stringify(x));
   function stable(x) { return JSON.stringify(sort(x)); }
@@ -17,9 +20,11 @@
   function isQueueReport(raw) { return atLeast(raw?.schemaVersion, 2, 24); }
   function isSimplifiedReport(raw) { return atLeast(raw?.schemaVersion, 2, 25); }
   function isExecutionGateReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 2)))); }
-  function schemaClass(raw) { return !isSimplifiedReport(raw) ? 'legacy' : isExecutionGateReport(raw) ? 'execution_gates' : 'simplified'; }
+  function isCurrentItemReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 3)))); }
+  function isRuntimeIntegrityReport(raw) { const v = parsedVersion(raw?.schemaVersion); return !!v && (v[0] > 2 || (v[0] === 2 && (v[1] > 25 || (v[1] === 25 && v[2] >= 4)))); }
+  function schemaClass(raw) { return !isSimplifiedReport(raw) ? 'legacy' : isRuntimeIntegrityReport(raw) ? 'runtime_integrity' : isCurrentItemReport(raw) ? 'current_item_lock' : isExecutionGateReport(raw) ? 'execution_gates' : 'simplified'; }
   function inventory(lesson, corrections = [], options = {}) {
-    const schemaVersion = typeof options === 'string' ? options : options.schemaVersion || '2.25.2';
+    const schemaVersion = typeof options === 'string' ? options : options.schemaVersion || SPEAKING_SCHEMA_VERSION;
     const legacy = !atLeast(schemaVersion, 2, 25);
     const c = lesson.curriculum || {}, items = new Map();
     function add(kind, key, target, label, taskMode, source, extra = {}) {
@@ -50,7 +55,7 @@
     s.sessionCoverage = { total: s.queue.length, practiced: s.completedCoverage.length, remaining: s.remainingCoverage.length, remainingIds: s.remainingCoverage.map(x => x.coverageId), byKind };
     return s;
   }
-  function reconcile(previous, items, identity = {}, schemaVersion = '2.25.2') {
+  function reconcile(previous, items, identity = {}, schemaVersion = SPEAKING_SCHEMA_VERSION) {
     const s = previous ? clone(previous) : { ...identity, schemaVersion, attempts: [], phaseProgress: PHASES.map(phaseId => ({ phaseId, status: 'not_started', notes: '' })), finalChallengeStatus: null, completed: false, osVerifiedCompleted: false };
     const old = new Map((s.queue || []).map(x => [x.coverageId, x]));
     const newIds = new Set(items.map(x => x.coverageId));
@@ -60,7 +65,9 @@
       if (prior?.sourceVersion === item.sourceVersion) return { ...prior, ...item, state: practiced(prior) ? 'PRACTICED' : 'NOT_YET_PRACTICED' };
       return { ...item, state: 'NOT_YET_PRACTICED', remainingReason: 'not_asked', validationNote: prior ? '教材已更新，舊證據不適用。' : '' };
     });
-    s.schemaVersion = schemaVersion;
+    const previousSchemaVersion = text(s.schemaVersion);
+    s.schemaVersion = previous?.completed ? previousSchemaVersion || schemaVersion : schemaVersion;
+    if (previous && !previous.completed && previousSchemaVersion && previousSchemaVersion !== schemaVersion) s.migrationMetadata = { strategy:'preserve_verified_progress_reset_active_attempt', fromSchemaVersion:previousSchemaVersion, toSchemaVersion:schemaVersion, migrationStage:'reconcile' };
     if (requiredChanged) {
       s.completed = s.osVerifiedCompleted = false; s.finalChallengeStatus = null;
       s.phaseProgress = s.phaseProgress.map(p => p.phaseId === 'final_challenge' ? { ...p, status: 'not_started', notes: '教材更新後需重新完成 Final Challenge。' } : p);
@@ -79,6 +86,49 @@
     const lower = /\blower(?:case)?\b|小寫/.test(v), capital = /\b(?:capital|uppercase|upper-case)\b|大寫/.test(v);
     return lower === capital ? null : lower ? 'lowercase' : 'capital';
   }
+  function attemptOrder(e, schemaVersion) { return isCurrentItemReport({schemaVersion}) ? e?.attemptSequence : e?.sequence; }
+  function advanceRequiredQueue(unresolved, coverageId, finalItemState, legacyResolved = false) {
+    if (coverageId !== unresolved[0]) return false;
+    if (!legacyResolved && !TERMINAL_ITEM_STATES.includes(finalItemState)) return false;
+    unresolved.shift();
+    return true;
+  }
+  function normalizedSentence(value) { return text(value).toLowerCase().normalize('NFKC').replace(/[\p{P}\p{S}]+/gu,' ').replace(/\s+/g,' ').trim(); }
+  function isFalseCorrection(c) { return !!c && normalizedSentence(c.original) === normalizedSentence(c.better); }
+  function finalStateOf(e, schemaVersion) { return isRuntimeIntegrityReport({schemaVersion}) ? e?.runtimeFinalState : e?.finalItemState; }
+  function expectedCorrectionLock(result, needsCorrection, correction, finalState) {
+    if (result.ok && !needsCorrection) return 'none';
+    if (result.ok && correction?.resolution === 'retried') return 'retried';
+    if (result.ok && correction?.resolution === 'declined') return 'declined';
+    if (result.remainingReason === 'correction_unresolved') return finalState === 'AWAITING_RETRY' ? 'awaiting_retry' : 'required';
+    return 'none';
+  }
+  function runtimeStateCheck(item, e, result, queuePosition, needsCorrection, correction, schemaVersion) {
+    const integrity=isRuntimeIntegrityReport({schemaVersion}), finalState=finalStateOf(e,schemaVersion);
+    if (e.queuePosition !== queuePosition) return {ok:false,remainingReason:'queue_order_violation',validationNote:'queuePosition 必須對應 Required queue 的固定位置。',issue:'queue_order_violation'};
+    if (e.status === 'not_tested' && !text(e.newPrompt).trim()) {
+      if (e.attemptSequence !== null || finalState !== 'PENDING') return {ok:false,remainingReason:'not_asked',validationNote:'未實際提問的項目必須是 PENDING，attemptSequence 必須為 null。',issue:'fabricated_attempt_sequence'};
+      if (integrity && (e.evidenceValid !== false || e.correctionLock !== 'none')) return {ok:false,remainingReason:'not_asked',validationNote:'未提問項目必須 evidenceValid=false 且 correctionLock=none。',issue:'unsupported_completion_claim'};
+      return null;
+    }
+    if (!Number.isSafeInteger(e.attemptSequence) || e.attemptSequence < 1) return {ok:false,remainingReason:'wrong_task_mode',validationNote:'實際提問需有 attemptSequence。',issue:'missing_attempt_sequence'};
+    const history = Array.isArray(e.currentItemStateHistory) ? e.currentItemStateHistory : [];
+    if (!history.length || history.some(x => !ITEM_STATES.includes(x)) || history[0] !== 'PENDING' || !history.includes('ACTIVE') || !history.includes('AWAITING_LEARNER') || history.at(-1) !== finalState) return {ok:false,remainingReason:'queue_order_violation',validationNote:'Current Item state history 不完整或順序無法驗證。',issue:'queue_order_violation'};
+    let expected;
+    if (e.resolution?.targetOrTask === 'explicit_skip') expected = ['EXPLICITLY_SKIPPED'];
+    else if (!result.ok) expected = result.remainingReason === 'hearing_unresolved' || result.remainingReason === 'unreliable_transcript' ? ['HEARING_UNRESOLVED'] : result.remainingReason === 'correction_unresolved' ? ['CORRECTION_REQUIRED','AWAITING_RETRY'] : item.kind === 'grammar' ? ['TASK_UNRESOLVED','TARGET_UNRESOLVED'] : ['TARGET_UNRESOLVED'];
+    else if (needsCorrection && correction?.resolution === 'declined') expected = ['RESOLVED_WITH_DECLINED_CORRECTION'];
+    else expected = ['RESOLVED'];
+    if (!expected.includes(finalState)) return {ok:false,remainingReason:result.ok?'queue_order_violation':result.remainingReason,validationNote:'runtimeFinalState 與實際 Hearing／Target／Correction 結果不一致。',issue:result.ok?'unsupported_completion_claim':'queue_order_violation'};
+    if (needsCorrection && correction?.resolution === 'retried' && (!history.includes('CORRECTION_REQUIRED') || !history.includes('AWAITING_RETRY'))) return {ok:false,remainingReason:'correction_unresolved',validationNote:'重要錯誤需經 CORRECTION_REQUIRED → AWAITING_RETRY 才能完成。',issue:'advanced_before_retry'};
+    if (integrity) {
+      const expectedLock=expectedCorrectionLock(result,needsCorrection,correction,finalState);
+      if (e.correctionLock !== expectedLock) return {ok:false,remainingReason:result.ok?'correction_unresolved':result.remainingReason,validationNote:'correctionLock 與實際 correction transition 不一致。',issue:'missing_required_correction'};
+      const expectedValid=result.ok && ['RESOLVED','RESOLVED_WITH_DECLINED_CORRECTION'].includes(finalState);
+      if (e.evidenceValid !== expectedValid) return {ok:false,remainingReason:result.ok?'queue_order_violation':result.remainingReason,validationNote:'evidenceValid 與伺服器驗證結果不一致。',issue:'unsupported_completion_claim'};
+    }
+    return null;
+  }
   function assess(item, e, schemaVersion = '2.25.1') {
     const fail = (remainingReason, validationNote) => ({ ok: false, remainingReason, validationNote });
     if (!e) return fail('not_asked', '尚無這項的回報。');
@@ -94,16 +144,16 @@
         return fail('explicit_skip', 'Learner 明確跳過，本項仍保持未完成。');
       }
       if (r.targetOrTask !== 'resolved') return fail('target_not_produced', '尚未完成 Target / Task Resolution Gate。');
-      if (r.queueUpdated !== true) return fail('queue_order_violation', '完成本項後需更新 queue，再由 FIRST unresolved item 決定下一題。');
-      if (r.recallSupport === 'coach_answer') return fail('model_only', 'Coach 已直接提供 target；不能當作 Learner 獨立產出。');
+      if (r.queueUpdated !== true && ['not_needed','retried','declined'].includes(r.correction)) return fail('queue_order_violation', '完成本項後需更新 queue，再由 FIRST unresolved item 決定下一題。');
+      if (r.recallSupport === 'coach_answer' && e.independentAfterCoachAnswer !== true) return fail('model_only', 'Coach 已提供答案；需要後續 Learner 獨立回答才能成為證據。');
     }
     if (!['confirmed', 'likely'].includes(e.utteranceReliability) || e.transcriptionIssue !== false) return fail('unreliable_transcript', '語音或轉錄尚未確認；speech recognition failure 不得變成 Learner failure。');
     const evidencePhases = e.taskMode === 'vocabulary_production' ? ['warmup', 'lesson_application', 'knowledge_integration'] : ['lesson_application', 'knowledge_integration'];
     if (e.taskMode !== item.taskMode || !evidencePhases.includes(e.phaseId)) return fail('wrong_task_mode', '任務或階段不符；只有可靠的 Vocabulary 自然產出可在暖身計入 Coverage，Final Challenge 不補漏題。');
     if (e.learnerFinished !== true) return fail('no_learner_response', 'Learner 尚未完成回答。');
-    if (e.modelOnly !== false || e.coachSuppliedAnswer !== false) return fail('model_only', '只有示範、跟讀或 Coach 代答。');
+    if (e.modelOnly !== false || (e.coachSuppliedAnswer === true && e.independentAfterCoachAnswer !== true)) return fail('model_only', '只有示範、跟讀或 Coach 代答，尚無後續獨立回答。');
     if (e.status !== 'practiced') return fail(REASONS.includes(e.remainingReason) ? e.remainingReason : 'no_learner_response', '尚未取得本項可靠練習證據。');
-    if (!Number.isSafeInteger(e.sequence) || e.sequence < 1) return fail('wrong_task_mode', '缺少本次實際提問順序。');
+    if (!Number.isSafeInteger(attemptOrder(e, schemaVersion)) || attemptOrder(e, schemaVersion) < 1) return fail('wrong_task_mode', '缺少本次實際提問順序。');
     if (e.taskMode === 'vocabulary_production' || (e.taskMode === 'correction_transfer' && item.component === 'Vocabulary')) {
       if (!containsTarget(e.learnerUtterance, item.target)) return fail('coach_only_target', 'Learner 回答中沒有實際產出目標字。');
       if (e.taskMode === 'correction_transfer' && e.newContext !== true) return fail('wrong_task_mode', '舊版訂正 Coverage 需要新情境。');
@@ -148,7 +198,7 @@
       const coverageId = text(c.coverageId).trim();
       if (coverageId && !queue.some(x => x.coverageId === coverageId)) throw new Error('speaking correction 的 coverageId 無法對應本課。');
       if (isExecutionGateReport({schemaVersion})) {
-        if (!['retried', 'declined'].includes(c.resolution)) throw new Error('V2.25.2 speaking correction 必須記錄 retried 或 declined。');
+        if (!['retried', 'declined'].includes(c.resolution)) throw new Error('V2.25.4 speaking correction 必須記錄 retried 或 declined。');
         if (c.resolution === 'retried' && (c.learnerRetried !== true || c.retryLearnerFinished !== true || !['confirmed','likely'].includes(c.retryUtteranceReliability) || c.retryTranscriptionIssue !== false)) throw new Error('Retry 必須等 Learner 完整說完，並保留可靠的 retry evidence。');
         if (c.resolution === 'declined' && (c.learnerRetried !== false || !text(c.learnerDeclineWords).trim())) throw new Error('declined 必須保留 Learner 明確拒絕 Retry 的原話。');
       }
@@ -166,83 +216,114 @@
     if (!s.activeAttempt || s.activeAttempt.id !== raw.continuationAttemptId) throw new Error('找不到這次 attempt，請先由網站準備／續練口說內容。');
     if (schemaClass({schemaVersion:s.activeAttempt.schemaVersion || '2.24.0'}) !== schemaClass(raw)) throw new Error('Report schemaVersion 與這次口說內容不符，請使用同一份 Brief 產生回報。');
     if (!Array.isArray(raw.coverageChecks) || !Array.isArray(raw.phaseProgress)) throw new Error('Report 需包含 coverageChecks 與 phaseProgress 陣列。');
-    const speakingCorrections = isSimplifiedReport(raw) ? normalizeSpeakingCorrections(raw.speakingCorrections, s.queue, raw.schemaVersion) : Array.isArray(raw.speakingCorrections) ? normalizeSpeakingCorrections(raw.speakingCorrections, s.queue, raw.schemaVersion) : [];
-    const allowed = new Map(s.activeAttempt.items.map(x => [x.coverageId, x.sourceVersion]));
+    const strict=isCurrentItemReport(raw), integrity=isRuntimeIntegrityReport(raw);
+    let speakingCorrections = isSimplifiedReport(raw) ? normalizeSpeakingCorrections(raw.speakingCorrections, s.queue, raw.schemaVersion) : Array.isArray(raw.speakingCorrections) ? normalizeSpeakingCorrections(raw.speakingCorrections, s.queue, raw.schemaVersion) : [];
+    const falseCorrections=integrity?speakingCorrections.filter(isFalseCorrection):[];
+    speakingCorrections=speakingCorrections.filter(c=>!falseCorrections.includes(c));
+    const allowed = new Map(s.activeAttempt.items.map((x,i) => [x.coverageId, {...x,queuePosition:s.queue.findIndex(q=>q.coverageId===x.coverageId)+1,attemptPosition:i+1}]));
     const warnings = [], checks = [], seen = new Set(), evaluated = [];
-    for (const [inputIndex,e] of raw.coverageChecks.entries()) {
-      const item = s.queue.find(x => x.coverageId === e?.coverageId);
-      if (!item || allowed.get(item.coverageId) !== e.sourceVersion) { warnings.push('忽略未知、已完成或舊版本 Coverage：' + text(e?.coverageId)); continue; }
+    const allowedIssueTypes=new Set(['advanced_before_current_item_resolved','advanced_before_target_resolution','advanced_before_retry','missed_required_item','hearing_confirmation_skipped','semantic_guess_under_uncertainty','false_correction','unsupported_praise','unsupported_completion_claim','coach_answer_counted_as_learner_evidence','grammar_item_skipped','premature_final_challenge','premature_wrap_up','queue_order_violation','missing_required_correction','fabricated_accuracy','fabricated_attempt_sequence']);
+    const coachExecutionIssues = (Array.isArray(raw.coachExecutionIssues) ? raw.coachExecutionIssues : []).filter(x=>x&&typeof x==='object'&&allowedIssueTypes.has(text(x.type))).map(x=>({type:text(x.type),coverageId:text(x.coverageId),notes:text(x.notes)}));
+    const issue = (type,item,note) => { if (!coachExecutionIssues.some(x=>x.type===type&&x.coverageId===(item?.coverageId||''))) coachExecutionIssues.push({type,coverageId:item?.coverageId||'',notes:note}); };
+    for(const c of falseCorrections){const item=s.queue.find(x=>x.coverageId===c.coverageId);issue('false_correction',item,'Proposed correction 與 Learner 原句實質相同；未記為 Learner weakness。');}
+    for (const [inputIndex,sourceEvidence] of raw.coverageChecks.entries()) {
+      let e=clone(sourceEvidence);
+      const item = s.queue.find(x => x.coverageId === e?.coverageId), allowedItem = item && allowed.get(item.coverageId);
+      if (!item || allowedItem?.sourceVersion !== e.sourceVersion) { warnings.push('忽略未知、已完成或舊版本 Coverage：' + text(e?.coverageId)); continue; }
+      const falseCorrection=falseCorrections.find(c=>c.coverageId===item.coverageId);
+      if(falseCorrection){e.productionQuality='acceptable';e.needsReview=false;e.correctionRequired=false;e.resolution={...(e.resolution||{}),correction:'not_needed'};e.correctionLock='none';if(finalStateOf(e,raw.schemaVersion)!=='RESOLVED'){e.runtimeFinalState='RESOLVED';e.finalItemState='RESOLVED';if(Array.isArray(e.currentItemStateHistory)){e.currentItemStateHistory=e.currentItemStateHistory.filter(x=>!['CORRECTION_REQUIRED','AWAITING_RETRY'].includes(x));if(e.currentItemStateHistory.at(-1)!=='RESOLVED')e.currentItemStateHistory.push('RESOLVED');}}}
       let result = assess(item, e, raw.schemaVersion);
+      if(integrity&&e.semanticGuessUsed===true&&(!['clear','clarified'].includes(e.resolution?.hearing)||e.transcriptionIssue!==false)){issue('semantic_guess_under_uncertainty',item,'ASR 未確認時不得猜測 Learner 原意。');result={ok:false,remainingReason:'hearing_unresolved',validationNote:'ASR 未確認且使用 semantic guess；保持 Hearing Lock。'};}
+      const needsCorrection = result.ok && (e.productionQuality === 'needs_review' || e.needsReview === true || result.accuracy === 'incorrect');
+      const correction = speakingCorrections.find(c => c.coverageId === item.coverageId);
       if (isExecutionGateReport(raw) && result.ok) {
-        const needsCorrection = e.productionQuality === 'needs_review' || e.needsReview === true || result.accuracy === 'incorrect';
-        const correction = speakingCorrections.find(c => c.coverageId === item.coverageId);
         const correctionResolution = e.resolution?.correction;
-        if (needsCorrection && (e.correctionRequired !== true || !correction || !['retried','declined'].includes(correction.resolution) || correctionResolution !== correction.resolution)) result = {ok:false,remainingReason:'correction_unresolved',validationNote:'重要錯誤尚未完成 My sentence / Better / Why 與 Retry／明確 declined。'};
+        if (needsCorrection && (e.correctionRequired !== true || !correction || !['retried','declined'].includes(correction.resolution) || correctionResolution !== correction.resolution)) {
+          result = {ok:false,remainingReason:'correction_unresolved',validationNote:'重要錯誤尚未完成 My sentence / Better / Why 與 Retry／明確 declined。'};
+          issue(finalStateOf(e,raw.schemaVersion)==='AWAITING_RETRY'?'advanced_before_retry':'missing_required_correction',item,result.validationNote);
+        }
         if (!needsCorrection && (e.correctionRequired !== false || correctionResolution !== 'not_needed')) result = {ok:false,remainingReason:'correction_unresolved',validationNote:'需明確記錄本項不需要 correction，或完成實際 correction。'};
       }
-      evaluated.push({e,item,result,inputIndex});
+      if (strict) {
+        const stateProblem = runtimeStateCheck(item,e,result,allowedItem.queuePosition,needsCorrection,correction,raw.schemaVersion);
+        if (stateProblem) { issue(stateProblem.issue,item,stateProblem.validationNote); result={ok:false,remainingReason:stateProblem.remainingReason,validationNote:stateProblem.validationNote}; }
+      }
+      if(integrity&&e.praiseGiven===true&&!result.ok)issue('unsupported_praise',item,'Item 尚未 resolved，不得用完成式 praise 關閉。');
+      evaluated.push({e,item,result,inputIndex,needsCorrection,correction});
     }
     if (isExecutionGateReport(raw)) {
       const unresolved = s.activeAttempt.items.map(x => x.coverageId);
-      const ordered = [...evaluated].sort((a,b)=>(Number.isSafeInteger(a.e.sequence)?a.e.sequence:Number.MAX_SAFE_INTEGER)-(Number.isSafeInteger(b.e.sequence)?b.e.sequence:Number.MAX_SAFE_INTEGER)||a.inputIndex-b.inputIndex);
+      const ordered = [...evaluated].sort((a,b)=>(Number.isSafeInteger(attemptOrder(a.e,raw.schemaVersion))?attemptOrder(a.e,raw.schemaVersion):Number.MAX_SAFE_INTEGER)-(Number.isSafeInteger(attemptOrder(b.e,raw.schemaVersion))?attemptOrder(b.e,raw.schemaVersion):Number.MAX_SAFE_INTEGER)||a.inputIndex-b.inputIndex);
       for (const row of ordered) {
-        const warmupVocabulary = row.e.phaseId === 'warmup' && row.item.kind === 'vocabulary' && row.result.ok;
-        if (warmupVocabulary) { const i=unresolved.indexOf(row.item.coverageId); if(i>=0) unresolved.splice(i,1); continue; }
-        if (row.item.coverageId !== unresolved[0]) { row.result = {ok:false,remainingReason:'queue_order_violation',validationNote:'這不是當時 FIRST unresolved Required Coverage；conversation flow 不可覆蓋 syllabus state。'}; continue; }
-        const explicitSkip = row.e.status === 'not_tested' && row.e.resolution?.targetOrTask === 'explicit_skip' && row.e.remainingReason === 'explicit_skip';
-        if (row.result.ok || explicitSkip) unresolved.shift();
+        const unasked = row.e.status === 'not_tested' && !text(row.e.newPrompt).trim(); if(unasked)continue;
+        const warmupVocabulary = !strict && row.e.phaseId === 'warmup' && row.item.kind === 'vocabulary' && row.result.ok;
+        if (warmupVocabulary) { const i=unresolved.indexOf(row.item.coverageId); if(i>=0)unresolved.splice(i,1);continue; }
+        if (row.item.coverageId !== unresolved[0]) {
+          const locked=s.queue.find(x=>x.coverageId===unresolved[0])||row.item;
+          row.result={ok:false,remainingReason:'queue_order_violation',validationNote:'這不是當時唯一的 Current Required Item；未終止的 Current Item 仍鎖定 queue。'};
+          const issueType=finalStateOf(row.e,raw.schemaVersion)==='AWAITING_RETRY'?'advanced_before_retry':integrity?'queue_order_violation':'advanced_before_current_item_resolved';
+          issue(issueType,locked,row.result.validationNote);continue;
+        }
+        const explicitSkip=row.e.resolution?.targetOrTask==='explicit_skip'&&(!strict||finalStateOf(row.e,raw.schemaVersion)==='EXPLICITLY_SKIPPED');
+        if(row.result.ok||explicitSkip)advanceRequiredQueue(unresolved,row.item.coverageId,finalStateOf(row.e,raw.schemaVersion),!strict);
       }
     }
-    for (const {e,item,result} of evaluated) {
-      if (seen.has(item.coverageId)) warnings.push('同項有多筆嘗試；保留已取得的有效證據。');
-      seen.add(item.coverageId);
-      checks.push({ ...clone(e), ...result, status: result.ok ? 'practiced' : 'not_tested', label: item.label, target: item.target, kind: item.kind, lessonId: item.lessonId });
-      if (result.ok) { item.state = 'PRACTICED'; item.evidence = { ...clone(e), ...result, attemptId: raw.continuationAttemptId }; delete item.remainingReason; delete item.validationNote; }
-      else if (!practiced(item)) Object.assign(item, result);
+    for (const {e,item,result,needsCorrection,correction} of evaluated) {
+      if (seen.has(item.coverageId)) warnings.push('同項有多筆嘗試；保留已取得的有效證據。'); seen.add(item.coverageId);
+      const finalState=finalStateOf(e,raw.schemaVersion)||'PENDING';
+      const normalized={...clone(e),...result,status:result.ok?'practiced':'not_tested',label:item.label,target:item.target,kind:item.kind,lessonId:item.lessonId};
+      if(integrity){normalized.runtimeFinalState=finalState;delete normalized.finalItemState;normalized.evidenceValid=result.ok&&['RESOLVED','RESOLVED_WITH_DECLINED_CORRECTION'].includes(finalState);normalized.correctionLock=expectedCorrectionLock(result,needsCorrection,correction,finalState);}
+      if(strict&&item.kind==='grammar'&&normalized.status==='not_tested'){if(normalized.accuracy&&normalized.accuracy!=='not_tested')issue('fabricated_accuracy',item,'未實際取得可靠 Grammar 回答，不可回報 incorrect/correct。');normalized.accuracy='not_tested';}
+      checks.push(normalized);
+      if(result.ok){item.state='PRACTICED';item.evidence={...clone(e),...result,evidenceValid:true,runtimeFinalState:finalState,correctionLock:normalized.correctionLock,attemptId:raw.continuationAttemptId};delete item.remainingReason;delete item.validationNote;item.correctionLock='none';}
+      else if(!practiced(item)){Object.assign(item,result,{correctionLock:normalized.correctionLock||'none',runtimeFinalState:finalState});}
     }
+    if(strict)for(const [coverageId,a] of allowed)if(!seen.has(coverageId)){const item=s.queue.find(x=>x.coverageId===coverageId);checks.push({coverageId,sourceVersion:a.sourceVersion,taskMode:item.taskMode,phaseId:'lesson_application',queuePosition:a.queuePosition,attemptSequence:null,status:'not_tested',newPrompt:'',learnerUtterance:'',utteranceReliability:'not_applicable',transcriptionIssue:false,learnerFinished:false,modelOnly:false,coachSuppliedAnswer:false,currentItemStateHistory:['PENDING'],...(integrity?{runtimeFinalState:'PENDING',evidenceValid:false,correctionLock:'none'}:{finalItemState:'PENDING'}),remainingReason:'not_asked',accuracy:item.kind==='grammar'?'not_tested':null,label:item.label,target:item.target,kind:item.kind,lessonId:item.lessonId,ok:false,validationNote:'本次尚未實際提問。'});}
     summarize(s);
-    const rank = { not_started: 0, partial: 1, completed: 2 };
-    for (const phase of s.phaseProgress) {
-      const p = raw.phaseProgress.find(x => x?.phaseId === phase.phaseId);
-      if (p && rank[p.status] !== undefined && text(p.notes).trim() && rank[p.status] > rank[phase.status]) Object.assign(phase, { status: p.status, notes: p.notes });
-    }
-    const f = raw.finalChallenge || {};
-    const currentEvidence = s.completedCoverage.filter(x => x.evidence?.attemptId === raw.continuationAttemptId);
-    const afterQueue = s.queue.length > 0 && !s.remainingCoverage.length && Number.isSafeInteger(f.sequence) && f.sequence > 0 && currentEvidence.every(x => x.evidence.sequence < f.sequence);
-    const reliableFinal = text(f.newPrompt).trim() && text(f.learnerUtterance).trim() && ['confirmed', 'likely'].includes(f.utteranceReliability) && f.transcriptionIssue === false;
-    const auditedIds = Array.isArray(f.auditedCoverageIds) ? [...new Set(f.auditedCoverageIds)] : [];
-    const preFinalAuditOK = !isExecutionGateReport(raw) || (f.preFinalAuditPassed === true && f.remainingCoverageBeforeChallenge === 0 && auditedIds.length === s.queue.length && s.queue.every(x => auditedIds.includes(x.coverageId)));
-    const finalOK = isSimplifiedReport(raw) ? afterQueue && preFinalAuditOK && f.learnerFinished === true && f.feedbackGiven === true && reliableFinal : afterQueue && f.learnerFinished === true && f.independentProduction === true && f.coachSuppliedAnswer === false && f.feedbackGiven === true && reliableFinal;
-    if (finalOK) s.finalChallengeStatus = { ...clone(f), verified: true, attemptId: raw.continuationAttemptId };
-    const finalPhase = s.phaseProgress.find(x => x.phaseId === 'final_challenge');
-    if (finalOK && finalPhase) finalPhase.status = 'completed';
-    if (!s.finalChallengeStatus?.verified && finalPhase?.status === 'completed') { finalPhase.status = 'partial'; warnings.push('Final Challenge 缺少完整回答、回饋，或發生在 Required Coverage 補齊之前。'); }
-    let endReason = raw.endReason;
-    const stop = raw.stopContext || {};
-    if (endReason === 'learner_agreed_stop' && (!text(stop.externalReason).trim() || /time limit|long conversation|deadline|minutes elapsed|時間到|聊太久|時間上限/i.test(stop.externalReason) || !text(stop.learnerWords).trim() || stop.coachInitiatedWrapUp !== false || /^(yes|yeah|okay|ok|thanks)[.! ]*$/i.test(stop.learnerWords.trim()))) { endReason = 'incomplete'; warnings.push('一般 Yes／Okay、時間壓力或 Coach 誘導收尾，不是有效停止同意。'); }
-    if (endReason === 'learner_requested_stop' && !text(stop.learnerWords).trim()) { endReason = 'incomplete'; warnings.push('缺少 Learner 明確要求停止的原話。'); }
-    s.gptClaimedCompleted = raw.completed === true;
-    const legacyPhasesComplete = s.phaseProgress.every(p => p.status === 'completed');
-    s.completed = s.osVerifiedCompleted = !!(s.queue.length && !s.remainingCoverage.length && s.finalChallengeStatus?.verified && (isSimplifiedReport(raw) || legacyPhasesComplete));
-    s.endReason = s.completed ? 'completed' : ['learner_requested_stop', 'learner_agreed_stop', 'technical_interruption'].includes(endReason) ? endReason : 'incomplete';
-    if (s.gptClaimedCompleted && !s.completed) warnings.push('GPT 宣稱完成，但 English OS 驗證未完成；已保存有效證據。');
-    const minutes = typeof raw.speakingMinutes === 'number' && Number.isFinite(raw.speakingMinutes) && raw.speakingMinutes >= 0 && ['measured', 'estimated'].includes(raw.timeBasis) ? raw.speakingMinutes : null;
-    const report = { ...clone(raw), schemaVersion: raw.schemaVersion, completed: s.completed, gptClaimedCompleted: s.gptClaimedCompleted, osVerifiedCompleted: s.completed, endReason: s.endReason, phaseProgress: clone(s.phaseProgress), finalChallenge: clone(s.finalChallengeStatus || {}), coverageChecks: checks, speakingCorrections, sessionCoverage: clone(s.sessionCoverage), validationWarnings: warnings, speakingMinutes: minutes, timeBasis: minutes === null ? 'not_recorded' : raw.timeBasis, serverVerified: true };
-    s.attempts.push({ id: raw.continuationAttemptId, rawReport: clone(raw), report });
-    s.activeAttempt = null;
-    return { state: summarize(s), report, duplicate: false };
+    const correctionLockCount=s.queue.filter(x=>!practiced(x)&&['required','awaiting_retry'].includes(x.correctionLock)).length;
+    const allEvidenceValid=s.completedCoverage.every(x=>x.evidence&&x.evidence.ok!==false)&&s.remainingCoverage.length===0&&correctionLockCount===0;
+    s.runtimeQueue={totalRequiredCoverage:s.queue.length,resolvedCoverage:s.completedCoverage.length,remainingCoverage:s.remainingCoverage.length,currentCoverageId:s.remainingCoverage[0]?.coverageId||null,currentRequiredItem:s.remainingCoverage[0]?.coverageId||null,correctionLockCount,allEvidenceValid,sessionState:s.remainingCoverage.length||correctionLockCount?'REQUIRED_PRACTICE':'FINAL_CHALLENGE'};
+    const rank={not_started:0,partial:1,completed:2};for(const phase of s.phaseProgress){const p=raw.phaseProgress.find(x=>x?.phaseId===phase.phaseId);if(p&&rank[p.status]!==undefined&&text(p.notes).trim()&&rank[p.status]>rank[phase.status])Object.assign(phase,{status:p.status,notes:p.notes});}
+    const f=raw.finalChallenge||{},finalSequence=strict?f.attemptSequence:f.sequence,finalStarted=!!(text(f.newPrompt).trim()||text(f.learnerUtterance).trim()||Number.isSafeInteger(finalSequence));
+    const currentEvidence=s.completedCoverage.filter(x=>x.evidence?.attemptId===raw.continuationAttemptId);
+    const afterQueue=s.queue.length>0&&!s.remainingCoverage.length&&correctionLockCount===0&&Number.isSafeInteger(finalSequence)&&finalSequence>0&&currentEvidence.every(x=>attemptOrder(x.evidence,raw.schemaVersion)<finalSequence);
+    const reliableFinal=text(f.newPrompt).trim()&&text(f.learnerUtterance).trim()&&['confirmed','likely'].includes(f.utteranceReliability)&&f.transcriptionIssue===false;
+    const auditedIds=Array.isArray(f.auditedCoverageIds)?[...new Set(f.auditedCoverageIds)]:[];
+    const runtimeAuditOK=!strict||(raw.runtimeQueue?.remainingCoverage===0&&raw.runtimeQueue?.currentCoverageId===null&&(raw.runtimeQueue?.currentRequiredItem===null||!integrity)&&(!integrity||raw.runtimeQueue?.correctionLockCount===0)&&raw.runtimeQueue?.sessionState==='FINAL_CHALLENGE');
+    const preFinalAuditOK=!isExecutionGateReport(raw)||(f.preFinalAuditPassed===true&&f.remainingCoverageBeforeChallenge===0&&auditedIds.length===s.queue.length&&s.queue.every(x=>auditedIds.includes(x.coverageId))&&runtimeAuditOK&&allEvidenceValid);
+    const finalAuditOK=!integrity||f.finalAuditPassed===true;
+    const finalCorrectionOK=!integrity||['not_needed','retried','declined'].includes(f.correction)&&f.correctionResolved===true;
+    const independentFinal=integrity?f.independentProduction===true&&f.coachSuppliedAnswer===false:f.independentProduction!==false&&f.coachSuppliedAnswer!==true;
+    const finalOK=isSimplifiedReport(raw)?afterQueue&&preFinalAuditOK&&finalAuditOK&&finalCorrectionOK&&f.learnerFinished===true&&f.feedbackGiven===true&&independentFinal&&reliableFinal:afterQueue&&f.learnerFinished===true&&f.independentProduction===true&&f.coachSuppliedAnswer===false&&f.feedbackGiven===true&&reliableFinal;
+    if(finalOK)s.finalChallengeStatus={...clone(f),evidenceValid:true,verified:true,attemptId:raw.continuationAttemptId};else if(finalStarted&&integrity)issue('premature_final_challenge',s.remainingCoverage[0],`Final Challenge blocked: remaining=${s.remainingCoverage.length}, correctionLocks=${correctionLockCount}.`);
+    const finalPhase=s.phaseProgress.find(x=>x.phaseId==='final_challenge');if(finalOK&&finalPhase)finalPhase.status='completed';if(!s.finalChallengeStatus?.verified&&finalPhase?.status==='completed'){finalPhase.status='partial';warnings.push('Final Challenge 缺少完整回答、回饋、Final Audit，或發生在 gate 通過之前。');}
+    let endReason=raw.endReason;const stop=raw.stopContext||{};const explicitStop=value=>/\b(?:stop|end (?:the )?(?:session|practice)|quit|don['’]?t want to continue|enough for today|have to go)\b|停止|結束(?:練習|口說)?|今天(?:先)?到這|不要再練/i.test(text(value));
+    if(endReason==='learner_agreed_stop'&&(!text(stop.externalReason).trim()||/time limit|long conversation|deadline|minutes elapsed|時間到|聊太久|時間上限/i.test(stop.externalReason)||!explicitStop(stop.learnerWords)||stop.coachInitiatedWrapUp!==false)){endReason='incomplete';warnings.push('一般 Yes／Okay、時間壓力或 Coach 誘導收尾，不是有效停止同意。');issue('premature_wrap_up',s.remainingCoverage[0],'Coverage 或 correction lock 尚未清除。');}
+    if(endReason==='learner_requested_stop'&&!explicitStop(stop.learnerWords)&&!explicitStop(stop.clarificationResponse)){endReason='incomplete';warnings.push('停止意圖不明確；必須確認是完成本題或停止整場。');}
+    s.gptClaimedCompleted=raw.completed===true;const legacyPhasesComplete=s.phaseProgress.every(p=>p.status==='completed');
+    s.completed=s.osVerifiedCompleted=!!(s.queue.length&&!s.remainingCoverage.length&&correctionLockCount===0&&allEvidenceValid&&s.finalChallengeStatus?.verified&&(isSimplifiedReport(raw)||legacyPhasesComplete));
+    s.endReason=s.completed?'completed':['learner_requested_stop','learner_agreed_stop','technical_interruption'].includes(endReason)?endReason:'incomplete';
+    if(s.completed)s.runtimeQueue.sessionState='COMPLETED';else if(['learner_requested_stop','learner_agreed_stop','technical_interruption'].includes(s.endReason)){s.runtimeQueue.sessionState='STOPPED';s.runtimeQueue.currentItemState='SESSION_STOPPED';}
+    if(s.gptClaimedCompleted&&!s.completed){warnings.push('GPT 宣稱完成，但 English OS 驗證未完成；已保存有效證據。');issue('unsupported_completion_claim',s.remainingCoverage[0],'仍有 Required Coverage、Correction、Pre-Final、Final Challenge 或 Final Audit gate 未完成。');}
+    const minutes=typeof raw.speakingMinutes==='number'&&Number.isFinite(raw.speakingMinutes)&&raw.speakingMinutes>=0&&['measured','estimated'].includes(raw.timeBasis)?raw.speakingMinutes:null;
+    const emptyFinal={attemptSequence:null,newPrompt:'',learnerUtterance:'',utteranceReliability:'not_applicable',transcriptionIssue:false,learnerFinished:false,independentProduction:false,coachSuppliedAnswer:false,feedbackGiven:false,correction:'not_needed',correctionResolved:false,preFinalAuditPassed:false,finalAuditPassed:false,remainingCoverageBeforeChallenge:null,auditedCoverageIds:[],evidenceValid:false,verified:false};
+    const report={...clone(raw),schemaVersion:raw.schemaVersion,completed:s.completed,gptClaimedCompleted:s.gptClaimedCompleted,osVerifiedCompleted:s.completed,endReason:s.endReason,phaseProgress:clone(s.phaseProgress),finalChallenge:clone(s.finalChallengeStatus||emptyFinal),coverageChecks:checks,speakingCorrections,sessionCoverage:clone(s.sessionCoverage),runtimeQueue:clone(s.runtimeQueue),coachExecutionIssues,validationWarnings:warnings,speakingMinutes:minutes,timeBasis:minutes===null?'not_recorded':raw.timeBasis,serverVerified:true};
+    s.attempts.push({id:raw.continuationAttemptId,rawReport:clone(raw),report});s.activeAttempt=null;return{state:summarize(s),report,duplicate:false};
   }
-  function prepare(s, attemptId, schemaVersion = '2.25.2') {
+  function prepare(s, attemptId, schemaVersion = SPEAKING_SCHEMA_VERSION) {
     const next = clone(s);
     const currentVersion = next.activeAttempt?.schemaVersion || (next.activeAttempt ? '2.24.0' : null);
-    if (next.activeAttempt && schemaClass({schemaVersion:currentVersion}) !== schemaClass({schemaVersion})) next.activeAttempt = null;
+    if (next.activeAttempt && schemaClass({schemaVersion:currentVersion}) !== schemaClass({schemaVersion})) {
+      next.migrationMetadata = { ...(next.migrationMetadata||{}), strategy:'preserve_verified_progress_reset_active_attempt', fromSchemaVersion:currentVersion, toSchemaVersion:schemaVersion, discardedAttemptId:next.activeAttempt.id, migrationStage:'prepare' };
+      next.activeAttempt = null;
+    }
     if (!next.activeAttempt) next.activeAttempt = { id: attemptId, schemaVersion, items: next.remainingCoverage.map(x => ({ coverageId: x.coverageId, sourceVersion: x.sourceVersion })) };
     return next;
   }
   function publicState(s) {
     if (!s) return null;
     const { attempts, ...rest } = s;
-    return { ...rest, attemptCount: attempts.length, reports: attempts.map(a => a.report) };
+    return { ...rest, speakingSchemaVersion:SPEAKING_SCHEMA_VERSION, attemptCount: attempts.length, reports: attempts.map(a => a.report) };
   }
-  root.EnglishSpeakingQueue = { PHASES, REASONS, stable, version, isQueueReport, isSimplifiedReport, isExecutionGateReport, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget, capitalizationChoice };
+  root.EnglishSpeakingQueue = { SCHEMA_VERSION:SPEAKING_SCHEMA_VERSION, PHASES, REASONS, ITEM_STATES, TERMINAL_ITEM_STATES, stable, version, isQueueReport, isSimplifiedReport, isExecutionGateReport, isCurrentItemReport, isRuntimeIntegrityReport, advanceRequiredQueue, inventory, reconcile, assess, applyReport, prepare, publicState, containsTarget, capitalizationChoice };
 })(globalThis);

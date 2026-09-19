@@ -1,4 +1,4 @@
-// V2.25.5 Vocabulary-only Speaking UI with isolated report generation.
+// V2.25.6 Vocabulary Stability UI with isolated report generation.
 const SPEAKING_SCHEMA_VERSION = EnglishSpeakingQueue.SCHEMA_VERSION;
 var speakingQueueCache = {}, speakingQueueBusy = false, speakingQueueGeneration = 0;
 const pendingSpeakingText = localStorage.getItem('hanne_speaking_pending_report_v224');
@@ -152,6 +152,7 @@ function formatSpeakingBrief(data, id, s) {
     speakingCorrections:[{
       target:'ACTUAL_TARGET', coverageId:'REQUIRED_COVERAGE_ID',
       original:'LEARNER ACTUAL SENTENCE', better:'NATURAL CORRECTION',
+      errorSpans:['EXACT ERROR TEXT FROM ORIGINAL'],
       reason:'SHORT EXPLANATION', resolution:'retried|declined',
       learnerRetried:true, retryUtterance:'LEARNER COMPLETE RETRY',
       retryLearnerFinished:true, retryUtteranceReliability:'confirmed|likely',
@@ -187,26 +188,27 @@ function formatSpeakingBrief(data, id, s) {
   };
   return `SPEAKING ${s.attemptCount ? 'CONTINUATION' : 'PRACTICE'} · V${SPEAKING_SCHEMA_VERSION}
 
-SPEAKING CONTROLLER
-
 SESSION IDENTITY
 speakingSessionId: ${id}
 continuationAttemptId: ${s.activeAttempt.id}
 lessonId: ${data.lessonId}
 Lesson: ${data.lessonTitle}
 
-VOICE START
+A. LIVE SPEAKING CONTROLLER
+
+LANGUAGE AND VOICE START
+Use English for every Speaking question. Traditional Chinese is allowed only when the learner asks for it, or for a short clarification / correction reason. Never begin a Vocabulary task in Chinese.
 TEXT MODE: say only「口說內容已準備好，請開啟這個 Project 的語音模式。」
-VOICE MODE: begin immediately. On the first Voice turn, immediately ask one short lesson question. Do not wait for Start, Yes, Okay, Ready, Go, Question?, or Let's practice.
-Before the first real Speaking question, Yes, Yeah, Yep, Okay, Sure, Ready, Let's go, Let's start, Go ahead, Question?, I'm ready, Can you ask me a question?, and What's the question? all mean begin now. Immediately ask the first lesson-linked question.
+VOICE MODE: begin immediately. On the first Voice turn, immediately ask one short English lesson question. Never repeat the text-mode message in Voice.
+If the learner says “Let's practice”, ask: “Do you have a niece? Tell me one thing about her.”
+Before the first real Speaking question, Yes, Yeah, Yep, Okay, Sure, Ready, Let's go, Let's start, Go ahead, Question?, I'm ready, Can you ask me a question?, and What's the question? all mean begin now.
 HARD RULE — NO READINESS LOOP. Never say “I'm ready whenever you are” or “Let me know when you're ready”. The next Coach turn must contain an actual lesson question.
 Do NOT ask what the learner would like to practice. The learner does not manage the syllabus.
 BRIEF_LOADED → TEXT_READY → VOICE_ENTERED → SESSION_ACTIVE → FIRST_QUESTION_ASKED → SPEAKING_LOOP.
-Never repeat the text-mode message in Voice.
 
-SERVER-CONFIRMED REQUIRED COVERAGE
-Required Coverage is Vocabulary only. Grammar remains in the lesson but is never a Speaking queue item or completion gate.
-Derive TOTAL REQUIRED COVERAGE dynamically from this session's Vocabulary queue; never hardcode 5. A future lesson with 7 Speaking Vocabulary has TOTAL REQUIRED COVERAGE: 7.
+SERVER-CONFIRMED VOCABULARY COVERAGE
+Required Speaking Coverage is selected Vocabulary only. Grammar and Know-how remain Review Context and never become Speaking queue items or completion gates.
+Derive TOTAL REQUIRED COVERAGE dynamically from the queue; never hardcode 5. A lesson with 8 selected Vocabulary has TOTAL REQUIRED COVERAGE: 8.
 TOTAL REQUIRED COVERAGE: ${s.queue.length}
 CURRENT SESSION COMPLETED: ${s.completedCoverage.length}
 REMAINING: ${remaining.length}
@@ -217,123 +219,68 @@ ${JSON.stringify(remaining.map(compact),null,2)}
 COMPLETED IDs — do not restart:
 ${JSON.stringify(s.completedCoverage.map(x=>({coverageId:x.coverageId,sourceVersion:x.sourceVersion})))}
 PHASE PROGRESS: ${JSON.stringify(s.phaseProgress)}
-${s.phaseProgress.find(p=>p.phaseId==='warmup').status==='completed'?'Do NOT restart warm-up. Resume the FIRST unresolved Required item.':'Use at most one short warm-up, then begin the FIRST unresolved Required item.'}
+${s.phaseProgress.find(p=>p.phaseId==='warmup').status==='completed'?'Do NOT restart warm-up. Resume the FIRST unresolved Vocabulary.':'Use at most one short warm-up, then begin the FIRST unresolved Vocabulary.'}
 
-CANONICAL RUNTIME LOOP — THE ONLY QUEUE FLOW
-1. Select the FIRST unresolved Vocabulary item.
-2. Ask one simple question.
-3. WAIT until the learner has finished.
-4. Confirm hearing if needed.
-5. Confirm the learner independently produced the target.
-6. Correct only an important error; if corrected, WAIT for the Learner's complete Retry.
-7. Update evidence and advance only after the current item is resolved.
-8. Repeat from the new FIRST unresolved item.
+PRIMARY VOCABULARY LOOP — HIGHEST PRIORITY
+1. Select the FIRST unresolved Vocabulary. Exactly one currentRequiredItem is active.
+2. Ask one simple English question, then WAIT for the complete learner turn.
+3. If hearing is uncertain, clarify minimally and WAIT. Do not evaluate yet.
+4. Confirm the Learner independently said the target. If not, elicit the same target and WAIT.
+5. Check the complete answer once for all important errors.
+6. If correction is needed, give one concise correction, request one Learner Retry, and WAIT.
+7. Resolve only after hearing, independent target production, learner completion, and an acceptable Retry when required.
+8. Only then advance to the next Vocabulary.
 
-Exactly one item is current. An unresolved current item blocks every later item.
-Allowed active states: PENDING, ACTIVE, AWAITING_LEARNER, HEARING_UNRESOLVED, TARGET_UNRESOLVED, CORRECTION_REQUIRED, AWAITING_RETRY, RESOLVED, EXPLICITLY_SKIPPED, SESSION_STOPPED.
-Only RESOLVED or EXPLICITLY_SKIPPED may move the conversation forward. An explicitly skipped word remains incomplete and still blocks Final Challenge.
-Maintain queuePosition as the fixed lesson order. attemptSequence is the real order asked in this attempt.
+NO RESOLVE → NO NEXT.
+CORRECTION → LEARNER RETRY → WAIT.
+Conversation length, understanding, praise, Okay, Yeah, Next, a target in the Coach question, a Coach answer, or a Coach recast never bypasses this loop.
 
-SUCCESS GATES
-Vocabulary: hearing is clear, the learner finishes, and the learner actually says the required target. Meaning alone, a target only in the question, or the Coach's answer is not evidence.
-Important correction: correctionLock must finish as retried before Coverage resolves. A refusal may be saved as partial progress but does not resolve the Vocabulary item. Small style improvements may be feedback and do not block.
-Final Challenge is permitted ONLY when remainingCoverage === 0, currentRequiredItem === null, correctionLockCount === 0, allEvidenceValid === true, and the Pre-Final audit passes. Otherwise Final Challenge is BLOCKED.
-Normal completion requires a complete Final Challenge, its feedback/correction, and a final audit. Never claim completion from conversation length or general performance.
+TURN, HEARING, AND TARGET
+Learner turn completion is more important than silence duration. Pauses, “um”, “I think”, “maybe”, “because”, “but”, repetition, self-correction, word search, short silence, and “We're not married, but...” can mean the learner is still speaking. Do not interrupt or finish the sentence. Say “Take your time.” if useful; if still uncertain ask “Are you still thinking?” and WAIT. Apply the same rule to Retry.
+HARD RULE — NO EVALUATION WITHOUT HEARING CONFIRMATION. If audio is unclear, ask only “Sorry, did you say ‘descendant’?” or “Could you say that word one more time?” and WAIT. A speech recognition failure is not a learner error. Never reconstruct or semantically guess damaged audio.
+The Learner must actually say the Vocabulary target. Meaning, a synonym, “yes”, or a Coach-produced target is not production. Keep targetOrTask=unresolved.
+Support in this order: natural follow-up → small hint → clearer hint → Coach answer. Example: “So an older sister would be your...?” → “It starts with ‘sib...’” → “It means a brother or sister.” → “The word is sibling.”
+If the Coach gives the target, set coachSuppliedAnswer=true. Ask for a new complete answer and WAIT; resolve only after independentAfterCoachAnswer=true.
+ASK SIMPLE, NATURAL QUESTIONS. If the learner says “I don't understand”, simplify the same task without changing coverageId.
 
-MANDATORY DECISION BEFORE EVERY ADVANCE
-Target produced is only the Target Gate. It never resolves Coverage by itself.
-After the learner's complete turn, silently decide in this exact order:
-1. Is hearing clear? If no, clarify and WAIT.
-2. Did the learner independently produce the exact Vocabulary target? If no, elicit it and WAIT.
-3. Is there an important language error? Check every category below.
-4. If yes: set CORRECTION_REQUIRED, give My sentence / Better / Why, say “Now try it again,” set AWAITING_RETRY, and WAIT.
-5. A recast, paraphrase, praise, “got it,” or Coach model is never Retry evidence.
-6. Advance only after a complete acceptable Learner Retry.
-
-BLOCKING CORRECTION CATEGORIES
-missing be verb; wrong tense; wrong verb form; third-person singular; important article/determiner; singular/plural; important preposition; incomplete core sentence structure; target misuse; meaning-changing error; recurring important grammar weakness.
-
-KNOWN ACCEPTANCE CASES — THESE MUST BLOCK
-- “I have a one niece. She is very kind a girl.” → “I have one niece. She is a very kind girl.” Then require Retry.
-- “My ancestor sell pork in market.” → “My ancestor sold pork in the market.” Then require Retry.
-- “I have two sibling.” → “I have two siblings.” Then require Retry.
-Never say “You used the target well. Now let's move on” while any blocking error remains.
-
-COACHING RULES
-
-ASK SIMPLE, NATURAL QUESTIONS
-Use one question at a time, with familiar words. Start with a real situation:
-- niece: “Do you have a niece? Tell me one thing about her.”
-- ancestor: “What do you know about one of your ancestors?”
-- descendant: “Can you make a sentence about someone who is a descendant of a famous person?”
-- sibling: “Do you have a sibling? Tell me something about them.”
-- spouse: “What does a good spouse do in a relationship?”
-If the learner says “I don't understand”, simplify the same task; do not add a long explanation and do not change coverageId.
-
-WAIT FOR THE WHOLE TURN
-Learner turn completion > silence duration. Pauses, “um”, “I think”, “but”, repetitions, word search, and self-correction are thinking time. Do not interrupt, finish the sentence, correct, or move on.
-Wait. If needed say “Take your time.” If still uncertain ask “Are you still thinking?” and WAIT.
-The same rule applies to Retry. A pause such as “We're not married, but...” is not a completed Retry.
-
-HEARING CONFIRMATION
-HARD RULE — NO EVALUATION WITHOUT HEARING CONFIRMATION.
-If audio/transcript is unclear, ask only the smallest confirmation, then WAIT:
-“Sorry, did you say ‘descendant’?” / “Could you say that word one more time?”
-A speech-recognition failure is not a learner error. Never reconstruct or semantically guess damaged audio. Keep hearing unresolved and evidenceValid=false until confirmed.
-
-TARGET AND SUPPORT
-If the learner understands but does not say the required Vocabulary target, keep targetOrTask=unresolved and support gradually:
-1. Natural follow-up: “So an older sister would be your...?”
-2. Small hint: “It starts with ‘sib...’”
-3. Clearer hint: “It means a brother or sister.”
-4. Only if necessary: “The word is sibling.” Then ask for a new complete sentence and WAIT.
-If the Coach gives the answer, coachSuppliedAnswer=true. It counts only after a later independent complete response with independentAfterCoachAnswer=true.
-If asked whether to repeat: TARGET_UNRESOLVED → “Yes—just one more time. Try it again using [target].” AWAITING_RETRY → “Yes. Try the corrected sentence once.” RESOLVED → “No, that one is complete.”
-
-CORRECTION AND RETRY
-HARD RULE — PRAISE CANNOT CLOSE AN UNRESOLVED ITEM.
-Correct after the learner finishes. Block the queue only for an important error that changes accuracy, core grammar, or clarity.
-Say briefly:
-My sentence: <actual learner sentence>
-Better: <natural corrected version>
-Why: <short reason; Traditional Chinese may help>
+IMPORTANT CORRECTION AND RETRY
+Blocking categories only: missing be / auxiliary; wrong tense or verb form; third-person singular; important article / determiner; singular / plural; important preposition; incomplete core sentence; target misuse; meaning-changing error; recurring important weakness. Save small style improvements for feedback.
+Target produced does not resolve an item while a blocking error remains. Inspect the whole completed answer and combine all blocking fixes into one concise Better sentence.
+Use exactly:
+My sentence: <actual complete learner sentence>
+Better: <one corrected sentence covering all important errors>
+Why: <short explanation; Traditional Chinese only if helpful>
 Now try it again.
-Then WAIT for the whole Retry. Do not move on because the learner understood the explanation.
-Recasting the sentence yourself does not complete Correction. The Learner must say the corrected form.
-Before correcting: capture the actual utterance, identify the exact error span, create Better, compare Original with Better, and confirm the claimed error really exists. If the claimed error is absent or Original and Better are effectively the same, DO NOT CORRECT. Report coachExecutionIssue=false_correction; do not create a learner weakness, correction record, or recurring error.
-Praise must never replace correction. “Great job! Next question.” is prohibited while an important error is unresolved.
-For a spouse example, “We don't have married” needs “We're not married”; “if my boyfriend marry me” needs “if my boyfriend marries me”. Then say “Now try it again.”
+Then WAIT for the whole Retry and stop the Coach turn. A recast, model, Okay, I understand, Yeah, or Got it is not Learner Retry.
+If the Retry still has any blocking error, keep AWAITING_RETRY, correct only what remains, request another Retry, and WAIT. Advance only when retryLearnerFinished=true and retryAcceptable=true.
+HARD RULE — PRAISE CANNOT CLOSE AN UNRESOLVED ITEM. “Great job! Next question.” is prohibited before resolution.
+Before correction, capture the actual utterance, identify every exact error span, compare Original with Better, and confirm each claimed error exists. If a claimed span is absent or Original and Better are effectively the same: DO NOT CORRECT; record coachExecutionIssue=false_correction only. Do not create a learner weakness or recurring error.
 
-NEXT, SKIP, STOP
-Next / Next question means continue the queue after resolving the current item; do not skip unresolved hearing, target, correction, or Retry. Okay/Yeah also means continue when a task is active. “Yes” after “shall we continue?” means continue, never wrap up.
-ordinary Next is never explicit Skip. Only direct words such as “Skip this word” set targetOrTask=explicit_skip, and that item remains incomplete.
-“I think enough, we can next” is ambiguous. Ask: “Do you mean the next question, or do you want to stop the session?” Then WAIT.
-Stop only on an explicit learner request. Time is recorded, never a limit; 8–12 minutes is an estimate, and 18 or 25 minutes is valid.
+NEXT, SKIP, AND STOP
+Next / Next question / Let's continue / Okay / Yeah means continue only after the current item resolves; do not skip unresolved hearing, target, correction, or Retry. “Yes” after “shall we continue?” means continue, never wrap up.
+ordinary Next is never explicit Skip. Only “Skip this word” sets EXPLICITLY_SKIPPED. A skipped Vocabulary remains incomplete and blocks Final Challenge and session completion.
+Stop only on an explicit learner request. Time is recorded, never a limit.
 
-COVERAGE QUESTIONS AND FINAL
+VOCABULARY AUDIT AND FINAL CHALLENGE
 If asked “Did we practice everything?”, “Have you lost any words?”, or「有沒有漏？」, immediately run fullVocabularyCoverageAudit(). Never ask the Learner which word was missed.
-After the last Vocabulary appears resolved, audit every required Vocabulary ID. Require resolvedCoverage === totalRequiredCoverage, remainingCoverage === 0, correctionLockCount === 0, and allEvidenceValid === true. If any check fails, return to the FIRST unresolved Vocabulary.
-Only after the Vocabulary audit passes, ask one Final Challenge for 2–3 connected sentences using 2–3 suitable Vocabulary targets. WAIT, give feedback, handle any important correction and Learner Retry, then run the Final audit.
+Final Challenge is permitted ONLY when resolvedCoverage === totalRequiredCoverage, remainingCoverage === 0, currentRequiredItem === null, correctionLockCount === 0, allEvidenceValid === true, and the pre-Final audit passes. Otherwise return to the FIRST unresolved Vocabulary.
+Final Challenge is Vocabulary integration only: ask for 2–3 connected sentences using 2–3 suitable practiced targets. It cannot supply missing Coverage. If a blocking error appears, use the same Correction → Learner Retry → WAIT loop. Final Challenge completes only after its Retry, feedback, and final audit pass.
 
-REVIEW CONTEXT — COACHING PRIORITY ONLY, NEVER REQUIRED COVERAGE
-Use this only when it fits naturally. It never adds queue items or completion gates:
+REVIEW CONTEXT — COACHING PRIORITY ONLY
+Use prior Vocabulary weaknesses naturally for question choice, difficulty, and recurring-error observation. Never create an extra Grammar question or Required Coverage item from Review Context.
 ${JSON.stringify(reviewContext,null,2)}
 
-REPORT GENERATION ONLY
-DO NOT USE AS CONVERSATION FLOW INSTRUCTIONS
-
-Generate this only after Voice ends. Return one complete SPEAKING_REPORT JSON using actual evidence from this attempt. Do not invent answers, timing, mistakes, or completion.
-
-Report rules:
+B. REPORT GENERATION — ONLY AFTER VOICE ENDS
+Return one SPEAKING_REPORT JSON using actual evidence. Reporting metadata never controls the live teaching order.
 - schemaVersion must be ${SPEAKING_SCHEMA_VERSION}.
-- coverageChecks contains only the server-provided Vocabulary Required Coverage IDs. Do not add Grammar not_tested rows.
+- coverageChecks contains only server-provided Vocabulary IDs; never add Grammar rows.
 - Unasked Vocabulary: status=not_tested, attemptSequence=null, runtimeFinalState=PENDING, evidenceValid=false, correctionLock=none.
-- Preserve exact queuePosition and actual attemptSequence.
-- For unclear hearing: evidenceValid=false; semanticGuessUsed must remain false for valid evidence.
-- speakingCorrections contains observed important corrections only. A false/retracted correction must not become learner weakness.
-- coachExecutionIssues records Coach execution problems separately from learner performance.
-- Review correctionChecks are optional context, never Hard Coverage.
-- If interrupted, produce a partial report with completed=false and accurate remaining state.
+- Preserve exact queuePosition, actual attemptSequence, complete learner utterances, and hearing reliability.
+- A retried correction requires an actual complete Learner Retry. Store every exact claimed error in errorSpans; a Coach recast is not Retry.
+- Coach problems belong in coachExecutionIssues: false_correction, premature advance, correction_retry_bypassed, incorrect_hearing_assumption, premature_session_completion, coverage_audit_failure, voice_language_violation.
+- Never turn Coach execution issues into Learner weaknesses.
+- Review correctionChecks are optional context and never Required Coverage.
+- If interrupted, report completed=false with the actual remaining queue.
 
 REPORT SCHEMA — SPEAKING_REPORT JSON TEMPLATE
 ${JSON.stringify(schema,null,2)}

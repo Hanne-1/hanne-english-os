@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import '../src/speaking-queue.js';
 
 const Q=globalThis.EnglishSpeakingQueue;
-const V=Q.SCHEMA_VERSION;
+const V='2.25.5';
 const lesson={id:'v255-vocabulary-only',title:'Family',curriculum:{
   mainVocabulary:['niece','ancestor','descendant','sibling','spouse'].map(term=>({term})),
   extendedVocabulary:[],
@@ -118,7 +118,7 @@ test('Final Challenge is blocked at 4/5 and completes only after the 5/5 audit',
 
 test('Current Speaking Brief is shorter and contains no Grammar Required Coverage runtime',()=>{
   const prompt=fs.readFileSync(new URL('../src/speaking-client.js',import.meta.url),'utf8');
-  assert(prompt.includes('Required Coverage is Vocabulary only'));
+  assert(prompt.includes('Required Speaking Coverage is selected Vocabulary only'));
   assert(prompt.includes('fullVocabularyCoverageAudit()'));
   for(const removed of ['VOCABULARY → GRAMMAR TRANSITION','Grammar Success Gate','expectedAnswer=capital','three separate tasks'])assert(!prompt.includes(removed));
 });

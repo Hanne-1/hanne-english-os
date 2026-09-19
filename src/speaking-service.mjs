@@ -38,6 +38,10 @@ export function createSpeakingService(store, makeId = () => crypto.randomUUID())
         if (input.action === 'status') return { state: Q.publicState(row.state), sourceFingerprint: fingerprint };
         throw new Error(`Speaking 已升級為 V${Q.SCHEMA_VERSION} Vocabulary-only，請重新載入網站後再準備口說內容。`);
       }
+      if (row && input.action !== 'report' && Q.isVocabularyStabilityReport({schemaVersion:row.state?.schemaVersion}) && !Q.isVocabularyStabilityReport({schemaVersion})) {
+        if (input.action === 'status') return { state: Q.publicState(row.state), sourceFingerprint: fingerprint };
+        throw new Error(`Speaking 已升級為 V${Q.SCHEMA_VERSION} Vocabulary Stability，請重新載入網站後再準備口說內容。`);
+      }
       if (!row && input.action === 'status') return { state: null, sourceFingerprint: fingerprint };
       const prior = row?.state || null;
       let s = Q.reconcile(prior, items, { speakingSessionId: 'speak_' + makeId(), lessonId: context.lesson.id, lessonTitle: context.lesson.title }, schemaVersion);

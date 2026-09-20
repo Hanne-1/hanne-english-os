@@ -1,7 +1,10 @@
-# Hanne's English OS V2.25.6
+# Hanne's English OS V2.32.0
 
-Speaking Required Coverage、自然訂正循環、伺服器驗證及未完成 Session 續練。
+單檔入口為 `index.html`。Speaking V2.32.0 使用唯一的八個 Gate 決策順序：`FINISHED → HEARD → TARGET → MEANING → GRAMMAR → RETRY → RESOLVE → NEXT`。只有前一個 Gate 通過，Coach 才能執行下一步。
 
-使用與驗收方式請見 [V2.25.3 更新說明](UPDATE-V2.25.3.md)。
+V2.31.3 的完整回答掃描、完整句 Correction／Retry、Vocabulary Coverage、Final Challenge、Cloud Sync、Review 與舊版 Report 相容性均保留。使用與驗收方式請見 [V2.32.0 實作報告](UPDATE-V2.32.0.md) 與 [Voice 驗收說明](V2.32.0-Speaking-Brief-Voice-Acceptance.md)。
 
-前端為 index.html；後端使用 Supabase speaking-queue Edge Function。開發時執行 `npm run build` 同步共用模組，`npm test` 驗證核心與 UI 流程。
+```bash
+npm run build
+npm test
+```

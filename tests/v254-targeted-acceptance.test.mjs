@@ -77,7 +77,7 @@ test('TEST 2 ancestor correction blocks descendant until accepted retry',()=>{
   assert.equal(runtime.state.completedCoverage.length,1);assert.equal(runtime.state.runtimeQueue.currentCoverageId,items[1].coverageId);assert.equal(runtime.state.queue[1].correctionLock,'required');
   const blocked=Q.decideCurrentItemTransition({kind:'vocabulary',learnerFinished:true,hearingResolved:true,targetOrTaskResolved:true,importantCorrectionRequired:true,correctionIssued:true,retryReceived:false,retryFinished:false,retryAccepted:false});
   assert.equal(blocked.runtimeState,'AWAITING_RETRY');assert.equal(blocked.queueAdvance,false);assert.equal(blocked.coachAction,'WAIT_FOR_RETRY');
-  assert.equal(Q.retrySatisfiesItem(items[1],{resolution:'retried',learnerRetried:true,retryUtterance:'My ancestor sold pork in the market.',retryLearnerFinished:true,retryUtteranceReliability:'confirmed',retryTranscriptionIssue:false}),true);
+  assert.equal(Q.retrySatisfiesItem(items[1],{resolution:'retried',learnerRetried:true,retryUtterance:'My ancestor sold pork in the market.',retryLearnerFinished:true,retryUtteranceReliability:'confirmed',retryTranscriptionIssue:false},V),true);
 });
 test('TEST 3 partial Retry stays locked',()=>{
   const paused=Q.decideCurrentItemTransition({kind:'vocabulary',learnerFinished:true,hearingResolved:true,targetOrTaskResolved:true,importantCorrectionRequired:true,correctionIssued:true,retryReceived:true,retryFinished:false,retryAccepted:false});
@@ -112,7 +112,7 @@ test('TEST 8 wrong Grammar answer is locked until correct Retry',()=>{
   const out=Q.applyReport(fresh(),report([...rows,wrong]));
   assert.equal(out.state.runtimeQueue.currentCoverageId,items[7].coverageId);
   assert.equal(out.report.coverageChecks.find(x=>x.coverageId===items[7].coverageId).accuracy,'incorrect');
-  assert.equal(Q.retrySatisfiesItem(items[7],{resolution:'retried',learnerRetried:true,retryUtterance:'Lowercase.',retryLearnerFinished:true,retryUtteranceReliability:'confirmed',retryTranscriptionIssue:false}),true);
+  assert.equal(Q.retrySatisfiesItem(items[7],{resolution:'retried',learnerRetried:true,retryUtterance:'Lowercase.',retryLearnerFinished:true,retryUtteranceReliability:'confirmed',retryTranscriptionIssue:false},V),true);
 });
 test('TEST 9 Next cannot skip Required Grammar',()=>{
   const transition=Q.decideCurrentItemTransition({kind:'grammar',learnerFinished:true,hearingResolved:true,targetOrTaskResolved:false,importantCorrectionRequired:false});

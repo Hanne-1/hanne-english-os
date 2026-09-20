@@ -42,6 +42,26 @@ export function createSpeakingService(store, makeId = () => crypto.randomUUID())
         if (input.action === 'status') return { state: Q.publicState(row.state), sourceFingerprint: fingerprint };
         throw new Error(`Speaking 已升級為 V${Q.SCHEMA_VERSION} Vocabulary Stability，請重新載入網站後再準備口說內容。`);
       }
+      if (row && input.action !== 'report' && Q.isRuntimeLockReport({schemaVersion:row.state?.schemaVersion}) && !Q.isRuntimeLockReport({schemaVersion})) {
+        if (input.action === 'status') return { state: Q.publicState(row.state), sourceFingerprint: fingerprint };
+        throw new Error(`Speaking 已升級為 V${Q.SCHEMA_VERSION} Runtime Lock Fix，請重新載入網站後再準備口說內容。`);
+      }
+      if (row && input.action !== 'report' && Q.isLiveControllerSimplificationReport({schemaVersion:row.state?.schemaVersion}) && !Q.isLiveControllerSimplificationReport({schemaVersion})) {
+        if (input.action === 'status') return { state: Q.publicState(row.state), sourceFingerprint: fingerprint };
+        throw new Error(`Speaking 已升級為 V${Q.SCHEMA_VERSION} Live Controller Simplification，請重新載入網站後再準備口說內容。`);
+      }
+      if (row && input.action !== 'report' && Q.isTurnPatienceReport({schemaVersion:row.state?.schemaVersion}) && !Q.isTurnPatienceReport({schemaVersion})) {
+        if (input.action === 'status') return { state: Q.publicState(row.state), sourceFingerprint: fingerprint };
+        throw new Error(`Speaking 已升級為 V${Q.SCHEMA_VERSION} Turn Patience，請重新載入網站後再準備口說內容。`);
+      }
+      if (row && input.action !== 'report' && Q.isThreeGateReport({schemaVersion:row.state?.schemaVersion}) && !Q.isThreeGateReport({schemaVersion})) {
+        if (input.action === 'status') return { state: Q.publicState(row.state), sourceFingerprint: fingerprint };
+        throw new Error(`Speaking 已升級為 V${Q.SCHEMA_VERSION} Simplified Live Speaking Controller，請重新載入網站後再準備口說內容。`);
+      }
+      if (row && input.action !== 'report' && Q.isEvidenceLockReport({schemaVersion:row.state?.schemaVersion}) && !Q.isEvidenceLockReport({schemaVersion})) {
+        if (input.action === 'status') return { state: Q.publicState(row.state), sourceFingerprint: fingerprint };
+        throw new Error(`Speaking 已升級為 V${Q.SCHEMA_VERSION} Simplified Live Speaking Controller，請重新載入網站後再準備口說內容。`);
+      }
       if (!row && input.action === 'status') return { state: null, sourceFingerprint: fingerprint };
       const prior = row?.state || null;
       let s = Q.reconcile(prior, items, { speakingSessionId: 'speak_' + makeId(), lessonId: context.lesson.id, lessonTitle: context.lesson.title }, schemaVersion);

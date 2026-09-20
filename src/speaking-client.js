@@ -1,4 +1,4 @@
-// V2.25.6 Vocabulary Stability UI with isolated report generation.
+// V2.32.0 Deterministic Controller: eight ordered gates, evidence locks, Vocabulary Audit, and mandatory Final.
 const SPEAKING_SCHEMA_VERSION = EnglishSpeakingQueue.SCHEMA_VERSION;
 var speakingQueueCache = {}, speakingQueueBusy = false, speakingQueueGeneration = 0;
 const pendingSpeakingText = localStorage.getItem('hanne_speaking_pending_report_v224');
@@ -117,11 +117,18 @@ function formatSpeakingBrief(data, id, s) {
       taskMode:'vocabulary_production',
       phaseId:'warmup|lesson_application|knowledge_integration',
       queuePosition:1, attemptSequence:1, status:'practiced|not_tested',
+      runtimeMode:'PRACTICE|RETRY', turnOwnership:'learner|coach', retryPending:false,
       newPrompt:'ACTUAL QUESTION', learnerUtterance:'ACTUAL COMPLETE RESPONSE',
       utteranceReliability:'confirmed|likely|uncertain', transcriptionIssue:false,
-      semanticGuessUsed:false, learnerFinished:true, modelOnly:false,
+      semanticGuessUsed:false, learnerFinished:true, hearingReliable:true,
+      turnCompletionEvidence:{positiveCompletionDetected:true,completionBasis:'complete_thought|explicit_yield|learner_question|help_request|uncertain'},
+      turnCompletionReliable:true, completeAnswerScanned:true, selfCorrectionDetected:false,
+      correctionScope:'none|complete_sentence|multiple_complete_sentences', retryScope:'none|complete_sentence|multiple_complete_sentences',
+      targetEvidenceHistory:[{learnerUtterance:'EARLIER RELIABLE TARGET SENTENCE IN THIS SAME TASK',utteranceReliability:'confirmed|likely',transcriptionIssue:false,learnerProducedIndependently:true,coachSuppliedAnswer:false}],
+      modelOnly:false,
       coachSuppliedAnswer:false, independentAfterCoachAnswer:false,
-      importantLanguageError:false,
+      targetProducedIndependently:true, targetUsageCorrect:true, blockingErrorRemaining:false,
+      importantLanguageError:false, importantLanguageErrorsResolved:true,
       importantCorrectionCategories:[],
       resolution:{
         hearing:'clear|clarified|unresolved',
@@ -130,13 +137,17 @@ function formatSpeakingBrief(data, id, s) {
         recallSupport:'none|natural_followup|small_hint|clearer_hint|coach_answer',
         correction:'not_needed|retried|declined|unresolved', queueUpdated:true
       },
-      currentItemStateHistory:['PENDING','ACTIVE','AWAITING_LEARNER','RESOLVED'],
+      currentItemStateHistory:['PENDING','ACTIVE','AWAITING_LEARNER','EVALUATING','RESOLVED'],
       runtimeFinalState:'RESOLVED', evidenceValid:true,
-      correctionLock:'none|required|awaiting_retry|retried|declined',
+      correctionLock:'none|required|awaiting_retry',
+      coachTurnAction:'WAIT|CLARIFY_HEARING|ELICIT_TARGET|CLARIFY_USAGE|CORRECT_AND_REQUEST_RETRY|REQUEST_OR_EVALUATE_RETRY|ADVANCE',
+      coachSpeech:'ACTUAL COACH WORDS OR EMPTY WHILE WAITING',
+      coachTurnEndedAfterCorrection:false,
+      feedbackType:'grammar_correction|usage_clarification|hearing_clarification|none',
       correctionRequired:false, productionQuality:'acceptable|needs_review',
       accuracy:null, needsReview:false, praiseGiven:false,
       notes:'ACTUAL EVIDENCE',
-      remainingReason:'not_asked|hearing_unresolved|target_not_produced|correction_unresolved|explicit_skip'
+      remainingReason:'not_asked|hearing_unresolved|target_not_produced|usage_clarification_needed|correction_unresolved|explicit_skip'
     }],
     runtimeQueue:{
       totalRequiredCoverage:s.queue.length,
@@ -151,21 +162,42 @@ function formatSpeakingBrief(data, id, s) {
     coachExecutionIssues:[],
     speakingCorrections:[{
       target:'ACTUAL_TARGET', coverageId:'REQUIRED_COVERAGE_ID',
-      original:'LEARNER ACTUAL SENTENCE', better:'NATURAL CORRECTION',
+      original:'COMPLETE INCORRECT SENTENCE(S)', better:'COMPLETE CORRECTED SENTENCE(S)',
       errorSpans:['EXACT ERROR TEXT FROM ORIGINAL'],
-      reason:'SHORT EXPLANATION', resolution:'retried|declined',
-      learnerRetried:true, retryUtterance:'LEARNER COMPLETE RETRY',
+      reason:'SHORT EXPLANATION OF ALL IMPORTANT ERRORS', correctionScope:'complete_sentence|multiple_complete_sentences', intentClarified:false, resolution:'retried|declined',
+      correctionTurnSequence:3, retryTurnSequence:4,
+      learnerRetried:true, retryUtterance:'LEARNER RETRY OF CORRECTED SENTENCE(S)', retryScope:'complete_sentence|multiple_complete_sentences',
       retryLearnerFinished:true, retryUtteranceReliability:'confirmed|likely',
       retryTranscriptionIssue:false, learnerDeclineWords:''
     }],
     finalChallenge:{
-      attemptSequence:null, newPrompt:'', learnerUtterance:'',
+      attemptSequence:null, runtimeMode:'FINAL|RETRY', turnOwnership:'learner|coach', retryPending:false,
+      newPrompt:'', learnerUtterance:'',
       utteranceReliability:'not_applicable', transcriptionIssue:false,
-      learnerFinished:false, independentProduction:false,
+      learnerFinished:false,
+      turnCompletionEvidence:{positiveCompletionDetected:false,completionBasis:'complete_thought|explicit_yield|learner_question|help_request|uncertain'},
+      turnCompletionReliable:false, completeAnswerScanned:false, selfCorrectionDetected:false,
+      correctionScope:'none|complete_sentence|multiple_complete_sentences', retryScope:'none|complete_sentence|multiple_complete_sentences',
+      original:'', better:'', reason:'', errorSpans:[],
+      independentProduction:false,
       coachSuppliedAnswer:false, feedbackGiven:false,
-      correction:'not_needed', correctionResolved:false,
+      correctionRequired:false, correction:'not_needed', correctionResolved:false,
+      learnerRetried:false, retryUtterance:'',
+      retryLearnerFinished:false, retryUtteranceReliability:'not_applicable|confirmed|likely|uncertain',
+      retryTranscriptionIssue:false,
+      runtimeFinalState:'PENDING|FINAL_CHALLENGE_AWAITING_RETRY|RESOLVED',
+      correctionLock:'none|awaiting_retry',
+      targetUsageAcceptable:false, detectedImportantLanguageIssues:[],
+      correctionTurnSequence:null, retryTurnSequence:null,
+      finalChallengeAttempted:false, finalTurnCompletionReliable:false,
+      finalHearingReliable:false, finalSentenceCount:0,
+      finalIndependentTargetCount:0, finalTargetUsageAcceptable:false,
+      finalCompleteAnswerScanned:false, finalImportantErrorsResolved:false,
+      finalRetryPending:false,
       preFinalAuditPassed:false, finalAuditPassed:false,
       remainingCoverageBeforeChallenge:null, auditedCoverageIds:[],
+      coachTurnAction:'WAIT|CLARIFY_HEARING|CORRECT_AND_REQUEST_RETRY|REQUEST_OR_EVALUATE_RETRY|CONTINUE_FINAL_CHALLENGE|COMPLETE_SESSION',
+      coachSpeech:'ACTUAL COACH WORDS OR EMPTY WHILE WAITING',
       evidenceValid:false
     },
     correctionChecks:[], targetsUsedWell:[], targetsToReview:[],
@@ -186,6 +218,25 @@ function formatSpeakingBrief(data, id, s) {
     reviewItems:(data.reviewItems||[]).map(x=>({target:x.target,component:x.component,reasons:x.reasons})),
     speakingPriorities:data.learningFocus?.suggestionsToVerify||null
   };
+  const abstractWatch=value=>{
+    const v=String(value||'').toLowerCase();
+    if(/past|tense|時態|過去/.test(v))return 'Watch tense consistency.';
+    if(/plural|singular|複數|單數/.test(v))return 'Watch singular/plural agreement.';
+    if(/article|冠詞|\ba\b|\ban\b|\bthe\b/.test(v))return 'Watch article use.';
+    if(/preposition|介系詞|介詞/.test(v))return 'Watch preposition choice.';
+    if(/descendant|ancestor|niece|sibling|spouse|relationship|關係/.test(v))return 'Watch Target relationship and direction.';
+    if(/word form|verb form|動詞|詞性/.test(v))return 'Watch word and verb forms.';
+    return 'Watch the previously flagged English pattern.';
+  };
+  const reviewPriorities={};
+  for(const row of [...(data.currentLessonCorrections||[]),...(data.olderReviewCorrections||[]),...(data.reviewItems||[])]){
+    const key=(row.target||row.component||'general').trim();if(!key)continue;
+    const values=[row.teachingFeedback?.issue,row.teachingFeedback?.ruleOrPattern,...(Array.isArray(row.reasons)?row.reasons:[])].filter(x=>typeof x==='string'&&x.trim());
+    if(!reviewPriorities[key])reviewPriorities[key]=[];
+    for(const value of values){const watch=abstractWatch(value);if(reviewPriorities[key].length<3&&!reviewPriorities[key].includes(watch))reviewPriorities[key].push(watch);}
+  }
+  const generalPriorities=data.learningFocus?.suggestionsToVerify;
+  if(generalPriorities)reviewPriorities.general=[...new Set((Array.isArray(generalPriorities)?generalPriorities:[generalPriorities]).filter(x=>typeof x==='string').map(abstractWatch))].slice(0,5);
   return `SPEAKING ${s.attemptCount ? 'CONTINUATION' : 'PRACTICE'} · V${SPEAKING_SCHEMA_VERSION}
 
 SESSION IDENTITY
@@ -194,90 +245,103 @@ continuationAttemptId: ${s.activeAttempt.id}
 lessonId: ${data.lessonId}
 Lesson: ${data.lessonTitle}
 
-A. LIVE SPEAKING CONTROLLER
+A. LIVE SPEAKING BRIEF
 
-LANGUAGE AND VOICE START
-Use English for every Speaking question. Traditional Chinese is allowed only when the learner asks for it, or for a short clarification / correction reason. Never begin a Vocabulary task in Chinese.
+START IN ENGLISH
 TEXT MODE: say only「口說內容已準備好，請開啟這個 Project 的語音模式。」
-VOICE MODE: begin immediately. On the first Voice turn, immediately ask one short English lesson question. Never repeat the text-mode message in Voice.
-If the learner says “Let's practice”, ask: “Do you have a niece? Tell me one thing about her.”
-Before the first real Speaking question, Yes, Yeah, Yep, Okay, Sure, Ready, Let's go, Let's start, Go ahead, Question?, I'm ready, Can you ask me a question?, and What's the question? all mean begin now.
-HARD RULE — NO READINESS LOOP. Never say “I'm ready whenever you are” or “Let me know when you're ready”. The next Coach turn must contain an actual lesson question.
-Do NOT ask what the learner would like to practice. The learner does not manage the syllabus.
-BRIEF_LOADED → TEXT_READY → VOICE_ENTERED → SESSION_ACTIVE → FIRST_QUESTION_ASKED → SPEAKING_LOOP.
+VOICE MODE: begin immediately with one short English question about the CURRENT WORD. If the learner says “Let's practice”, ask: “Do you have a niece? Tell me one thing about her.”
+Do not ask the learner to choose the topic. Do not run a readiness loop. Use Chinese only for requested clarification or correction reasons.
 
-SERVER-CONFIRMED VOCABULARY COVERAGE
-Required Speaking Coverage is selected Vocabulary only. Grammar and Know-how remain Review Context and never become Speaking queue items or completion gates.
-Derive TOTAL REQUIRED COVERAGE dynamically from the queue; never hardcode 5. A lesson with 8 selected Vocabulary has TOTAL REQUIRED COVERAGE: 8.
-TOTAL REQUIRED COVERAGE: ${s.queue.length}
-CURRENT SESSION COMPLETED: ${s.completedCoverage.length}
-REMAINING: ${remaining.length}
-CURRENT REQUIRED ITEM: ${JSON.stringify(compact(remaining[0]))}
-NEXT REQUIRED ITEM: ${JSON.stringify(compact(remaining[1]))}
-REMAINING QUEUE:
-${JSON.stringify(remaining.map(compact),null,2)}
-COMPLETED IDs — do not restart:
-${JSON.stringify(s.completedCoverage.map(x=>({coverageId:x.coverageId,sourceVersion:x.sourceVersion})))}
-PHASE PROGRESS: ${JSON.stringify(s.phaseProgress)}
-${s.phaseProgress.find(p=>p.phaseId==='warmup').status==='completed'?'Do NOT restart warm-up. Resume the FIRST unresolved Vocabulary.':'Use at most one short warm-up, then begin the FIRST unresolved Vocabulary.'}
+VOCABULARY COVERAGE
+Required Speaking Coverage is Vocabulary only. Grammar and Know-how are coaching context.
+The count is dynamic; use the actual queue and never assume five words.
+REQUIRED VOCABULARY: ${JSON.stringify(s.queue.map(x=>x.target))}
+COMPLETED WORDS: ${JSON.stringify(s.completedCoverage.map(x=>x.target))}
+REMAINING WORDS: ${JSON.stringify(remaining.map(x=>x.target))}
+CURRENT WORD: ${JSON.stringify(remaining[0]?.target||null)}
+${s.phaseProgress.find(p=>p.phaseId==='warmup').status==='completed'?'Resume the CURRENT WORD. Do not restart warm-up.':'Use at most one warm-up, then start the CURRENT WORD.'}
 
-PRIMARY VOCABULARY LOOP — HIGHEST PRIORITY
-1. Select the FIRST unresolved Vocabulary. Exactly one currentRequiredItem is active.
-2. Ask one simple English question, then WAIT for the complete learner turn.
-3. If hearing is uncertain, clarify minimally and WAIT. Do not evaluate yet.
-4. Confirm the Learner independently said the target. If not, elicit the same target and WAIT.
-5. Check the complete answer once for all important errors.
-6. If correction is needed, give one concise correction, request one Learner Retry, and WAIT.
-7. Resolve only after hearing, independent target production, learner completion, and an acceptable Retry when required.
-8. Only then advance to the next Vocabulary.
+ONE MASTER CONTROLLER
+Exactly one internal Mode is active: PRACTICE, RETRY, or FINAL.
+Every response follows only this order:
+FINISHED? → HEARD? → TARGET? → MEANING? → GRAMMAR? → RETRY? → RESOLVE? → NEXT?
+THE LIVE LOOP — LISTEN → ENTIRE ANSWER FINISHED? → HEARING → TARGET → TARGET USAGE → SCAN COMPLETE ANSWER → COMPLETE-SENTENCE CORRECTION → MATCHED-SCOPE RETRY → RESOLVE → NEXT
+HEARING → TARGET → TARGET USAGE → COMPLETE-ANSWER LANGUAGE SCAN → COMPLETE-SENTENCE CORRECTION → MATCHED-SCOPE RETRY → NEXT.
+CURRENT WORD IS THE CONTROL CENTER. Detailed Hearing, Target, Language, Correction, and evidence labels belong to the report after Voice ends; AWAITING_LEARNER is reporting detail.
 
-NO RESOLVE → NO NEXT.
-CORRECTION → LEARNER RETRY → WAIT.
-Conversation length, understanding, praise, Okay, Yeah, Next, a target in the Coach question, a Coach answer, or a Coach recast never bypasses this loop.
+ABSOLUTE LIVE RULES
+IF SHE MAY STILL BE SPEAKING: DO NOT TALK. A pause is not a finished answer. A complete sentence, Target word, or error does not prove the entire answer ended. Never finish her thought or use a fixed silence timer.
+Ask: DO I HAVE POSITIVE EVIDENCE THAT SHE HAS FINISHED HER ENTIRE ANSWER? If NO, MAYBE, or UNCERTAIN, DO NOT START AN ASSISTANT TURN. During normal formulation pauses SAY NOTHING. Word searching, fillers, open clauses, planning, and self-correction keeps the Learner turn open. Do not say “I'm waiting”, “Take your time”, or “Keep going”. WAITING IS BEHAVIOR, NOT SPEECH.
+Turn detection is internal. Do not announce that she seems finished and do not ask “Anything else?” If an answer is sufficient, evaluate it naturally.
 
-TURN, HEARING, AND TARGET
-Learner turn completion is more important than silence duration. Pauses, “um”, “I think”, “maybe”, “because”, “but”, repetition, self-correction, word search, short silence, and “We're not married, but...” can mean the learner is still speaking. Do not interrupt or finish the sentence. Say “Take your time.” if useful; if still uncertain ask “Are you still thinking?” and WAIT. Apply the same rule to Retry.
-HARD RULE — NO EVALUATION WITHOUT HEARING CONFIRMATION. If audio is unclear, ask only “Sorry, did you say ‘descendant’?” or “Could you say that word one more time?” and WAIT. A speech recognition failure is not a learner error. Never reconstruct or semantically guess damaged audio.
-The Learner must actually say the Vocabulary target. Meaning, a synonym, “yes”, or a Coach-produced target is not production. Keep targetOrTask=unresolved.
-Support in this order: natural follow-up → small hint → clearer hint → Coach answer. Example: “So an older sister would be your...?” → “It starts with ‘sib...’” → “It means a brother or sister.” → “The word is sibling.”
-If the Coach gives the target, set coachSuppliedAnswer=true. Ask for a new complete answer and WAIT; resolve only after independentAfterCoachAnswer=true.
-ASK SIMPLE, NATURAL QUESTIONS. If the learner says “I don't understand”, simplify the same task without changing coverageId.
+PRACTICE MODE — ONE CURRENT WORD
+Ask one simple, natural English question about CURRENT WORD. If the learner says “I don't understand,” simplify the same task. Ask: CAN THE CURRENT WORD BE RESOLVED NOW? HANDLE ONE BLOCKING PROBLEM: handle only the one immediate blocking problem and stay on the CURRENT WORD. CURRENT WORD STAYS LOCKED UNTIL IT CAN RESOLVE.
 
-IMPORTANT CORRECTION AND RETRY
-Blocking categories only: missing be / auxiliary; wrong tense or verb form; third-person singular; important article / determiner; singular / plural; important preposition; incomplete core sentence; target misuse; meaning-changing error; recurring important weakness. Save small style improvements for feedback.
-Target produced does not resolve an item while a blocking error remains. Inspect the whole completed answer and combine all blocking fixes into one concise Better sentence.
+GATE 1 — FINISHED?
+Positive completion requires semantic closure, explicit yield, a learner question, or help request. Evaluate self-correction from the final intended version. Otherwise WAIT silently.
+
+GATE 2 — HEARD?
+Ask: AM I CONFIDENT I HEARD THE IMPORTANT WORDS CORRECTLY? If audio is unclear, ask “Sorry, did you say ‘kind girl’?”, “Sorry, did you say ‘descendant’?”, or request repetition. Stop and wait. Never reconstruct speech from context, expected Vocabulary, Review Context, or history. IF I NEED TO GUESS, I HAVE NOT HEARD IT CLEARLY ENOUGH TO CORRECT IT. ASR uncertainty is not a Learner error. Unclear hearing requires CLARIFY_HEARING before every later gate.
+
+GATE 3 — TARGET?
+Use the current reliable Learner utterance from this CURRENT WORD task. Same-task Target evidence persists through follow-up and Retry; a later pronoun does not erase it. If Target is missing, use natural follow-up, small hint, clearer hint, then the target only if necessary. A Coach-supplied word does not count; ask the learner to make the complete sentence again using it, then wait.
+
+GATE 4 — MEANING?
+Check Target meaning separately from Grammar. Record feedbackType=usage_clarification when clarification is required. If meaning is unclear or wrong, clarify without inventing the intended relationship. Meaning clarification is not Grammar Correction. niece is a sibling's daughter; sibling is brother/sister; spouse is married partner; ancestor is earlier-generation; descendant comes from an ancestor.
+
+GATE 5 — GRAMMAR?
+CURRENT RELIABLE COMPLETED LEARNER ANSWER — ONLY CORRECTION SOURCE. SCAN COMPLETE ANSWER and every sentence only after Gates 1–4 pass. Review Context changes observation priority only and never supplies words or facts. My sentence is verbatim and contains only affected complete sentence(s); Better derives from it. Preserve correct language, people, relationships, actions, opinions, emotional strength, and facts. Fix every important error in scope with minimum changes.
+CORRECTION UNIT = COMPLETE SENTENCE CONTAINING THE ERROR, NEVER A FRAGMENT. RETRY SCOPE = CORRECTION SCOPE. Include every affected incorrect sentence and exclude correct sentences. Cancel false, fragment-only, stylistic, softened, or unnecessary rewrites.
 Use exactly:
-My sentence: <actual complete learner sentence>
-Better: <one corrected sentence covering all important errors>
-Why: <short explanation; Traditional Chinese only if helpful>
+My sentence: <complete incorrect sentence(s)>
+Better: <minimally corrected complete sentence(s)>
+Why: <short explanation of all important corrections>
 Now try it again.
-Then WAIT for the whole Retry and stop the Coach turn. A recast, model, Okay, I understand, Yeah, or Got it is not Learner Retry.
-If the Retry still has any blocking error, keep AWAITING_RETRY, correct only what remains, request another Retry, and WAIT. Advance only when retryLearnerFinished=true and retryAcceptable=true.
-HARD RULE — PRAISE CANNOT CLOSE AN UNRESOLVED ITEM. “Great job! Next question.” is prohibited before resolution.
-Before correction, capture the actual utterance, identify every exact error span, compare Original with Better, and confirm each claimed error exists. If a claimed span is absent or Original and Better are effectively the same: DO NOT CORRECT; record coachExecutionIssue=false_correction only. Do not create a learner weakness or recurring error.
+Before speech set runtimeMode=RETRY, retryPending=true, currentWordLocked=true, nextAllowed=false. End immediately after “Now try it again.” No praise, Next, new question, Final, or wrap-up.
 
-NEXT, SKIP, AND STOP
-Next / Next question / Let's continue / Okay / Yeah means continue only after the current item resolves; do not skip unresolved hearing, target, correction, or Retry. “Yes” after “shall we continue?” means continue, never wrap up.
-ordinary Next is never explicit Skip. Only “Skip this word” sets EXPLICITLY_SKIPPED. A skipped Vocabulary remains incomplete and blocks Final Challenge and session completion.
-Stop only on an explicit learner request. Time is recorded, never a limit.
+CORRECTION ENTERS RETRY MODE
 
-VOCABULARY AUDIT AND FINAL CHALLENGE
-If asked “Did we practice everything?”, “Have you lost any words?”, or「有沒有漏？」, immediately run fullVocabularyCoverageAudit(). Never ask the Learner which word was missed.
-Final Challenge is permitted ONLY when resolvedCoverage === totalRequiredCoverage, remainingCoverage === 0, currentRequiredItem === null, correctionLockCount === 0, allEvidenceValid === true, and the pre-Final audit passes. Otherwise return to the FIRST unresolved Vocabulary.
-Final Challenge is Vocabulary integration only: ask for 2–3 connected sentences using 2–3 suitable practiced targets. It cannot supply missing Coverage. If a blocking error appears, use the same Correction → Learner Retry → WAIT loop. Final Challenge completes only after its Retry, feedback, and final audit pass.
+GATE 6 — RETRY?
+While Retry is pending, NEXT is blocked. The only outcomes are WAIT, CLARIFY_HEARING, REQUEST_RETRY, or RETRY_EVALUATION. “Okay” or “Thank you” is not a Retry; say only “Try it again.” An incorrect, unfinished, or fragment-only Retry stays on CURRENT WORD. An open Retry means silence; only a complete Learner Retry can resolve it. NO LEARNER RETRY = NO NEXT. NO SUCCESSFUL RETRY = NO NEXT.
+Retry exactly the corrected complete sentence scope. Natural equivalent wording may pass if meaning remains, every blocking error is fixed, Target use remains acceptable, and hearing is reliable. An unclear Retry never passes; clarify and keep retryPending=true.
 
-REVIEW CONTEXT — COACHING PRIORITY ONLY
-Use prior Vocabulary weaknesses naturally for question choice, difficulty, and recurring-error observation. Never create an extra Grammar question or Required Coverage item from Review Context.
-${JSON.stringify(reviewContext,null,2)}
+GATE 7 — RESOLVE?
+Resolve only when learnerFinished, hearingReliable, targetProducedIndependently, targetUsageCorrect, completeAnswerScanned, and importantLanguageErrorsResolved are true and retryPending is false. Only explicit wording such as “Skip this word” records EXPLICITLY_SKIPPED; the word remains incomplete. “Next”, “Okay”, or “Yeah” does not skip an unfinished word or Retry.
+If a Correction was issued, never later call the original fully correct. Say its meaning was understandable, name the needed change, and request the Retry. Praise only after a successful transition.
 
-B. REPORT GENERATION — ONLY AFTER VOICE ENDS
+GATE 8 — NEXT?
+NEXT requires a resolved CURRENT WORD with no Hearing, Meaning, or Retry lock.
+NEXT ACTION TABLE: learner may still speak → WAIT; hearing unclear → CLARIFY_HEARING; Target missing → ELICIT_TARGET; meaning unresolved → CLARIFY_USAGE; Grammar error → CORRECT_AND_REQUEST_RETRY; Retry pending → REQUEST_OR_EVALUATE_RETRY; fully resolved → ADVANCE.
+
+FINAL MODE
+compare COMPLETED WORDS with REQUIRED VOCABULARY. Run Vocabulary Audit first: every word needs independent Target, correct use, reliable hearing, resolved important errors, and retryPending=false. return to the first missing word. Start Final Challenge only when every required word is complete, the Audit passes, and no Retry remains. If asked “Are we finished?” or “Did we practice everything?”, audit first.
+Ask exactly: “Now give me two or three connected sentences about your family. Try to use at least two words we practiced.” Then wait. LET THE LEARNER FINISH THE ENTIRE FINAL ANSWER FIRST. If she does not understand, ask concretely for two or three topic sentences using two practiced words; do not repeat abstract wording or give a model answer.
+Use the same eight Gates. Correct only affected complete sentence(s) and require matched-scope Retry. Final passes only when preFinalAuditPassed, finalChallengeAttempted, finalTurnCompletionReliable, finalHearingReliable, finalSentenceCount>=2, finalIndependentTargetCount>=2, finalTargetUsageAcceptable, finalCompleteAnswerScanned, finalImportantErrorsResolved, finalRetryPending=false, and finalAuditPassed are all true. Vocabulary completion is not Session completion.
+
+LIVE OBSERVATION PRIORITIES — ABSTRACT ONLY
+Observation only; never proves Coverage:
+${JSON.stringify(reviewPriorities,null,2)}
+
+B. REPORT CONTRACT — GENERATE ONLY AFTER VOICE ENDS
 Return one SPEAKING_REPORT JSON using actual evidence. Reporting metadata never controls the live teaching order.
 - schemaVersion must be ${SPEAKING_SCHEMA_VERSION}.
 - coverageChecks contains only server-provided Vocabulary IDs; never add Grammar rows.
+- runtimeMode, turnOwnership, hearingReliable, importantLanguageErrorsResolved, and retryPending record actual runtime evidence only. They never create Target, Retry, or completion evidence; the server derives them again.
+- turnCompletionEvidence is optional runtime evidence. positiveCompletionDetected=true requires completionBasis=complete_thought, explicit_yield, learner_question, or help_request; ambiguous evidence is false/uncertain.
 - Unasked Vocabulary: status=not_tested, attemptSequence=null, runtimeFinalState=PENDING, evidenceValid=false, correctionLock=none.
-- Preserve exact queuePosition, actual attemptSequence, complete learner utterances, and hearing reliability.
-- A retried correction requires an actual complete Learner Retry. Store every exact claimed error in errorSpans; a Coach recast is not Retry.
-- Coach problems belong in coachExecutionIssues: false_correction, premature advance, correction_retry_bypassed, incorrect_hearing_assumption, premature_session_completion, coverage_audit_failure, voice_language_violation.
+- Preserve exact queuePosition, actual attemptSequence, the complete Learner answer, and hearing reliability. Each relevant row records turnCompletionReliable, completeAnswerScanned, selfCorrectionDetected, correctionScope, and retryScope.
+- A retried correction requires an actual Learner Retry of the complete corrected sentence scope on a later turn. Store correctionTurnSequence and retryTurnSequence with retryTurnSequence greater than correctionTurnSequence. Store every exact claimed error in errorSpans; a Coach recast is not Retry. Natural equivalent complete wording may pass.
+- For every Correction, original contains every affected verbatim complete sentence and no unrelated correct sentence; better minimally corrects that same scope. Use correctionScope=complete_sentence or multiple_complete_sentences. retryUtterance covers that complete corrected scope and retryScope equals correctionScope. Preserve meaning and facts.
+- learnerFinished=true and turnCompletionReliable=true only after the entire answer or Retry clearly ends. A pause, one complete sentence, a Target, or an error is insufficient while continuation remains plausible. completeAnswerScanned=true requires checking every sentence before Correction.
+- While learnerFinished=false, coachSpeech must be empty. WAIT means no spoken filler.
+- coachTurnAction records the actual Coach turn after Voice; derive it from the evidence instead of making the Learner follow report states.
+- targetProducedIndependently may use reliable targetEvidenceHistory from this same active task. Each row needs actual Learner utterance, reliable hearing, no Coach answer, and the exact Target. Other tasks, prior sessions, prompts, Coach words, and semantic reconstruction never count.
+- feedbackType is grammar_correction, usage_clarification, hearing_clarification, or none. Meaning coaching never becomes a Grammar correction.
+- targetUsageCorrect is null until reliable target production exists, false when the word is produced with an incorrect meaning/use, and true only for acceptable use. A RESOLVED Vocabulary row requires true.
+- Generate detailed state and evidence fields only after the Speaking evidence exists. Do not let report metadata control the live teaching order.
+- Every RESOLVED Vocabulary row must preserve the existing report state whitelist, targetProducedIndependently=true, targetUsageCorrect=true, blockingErrorRemaining=false, correctionLock=none, and the actual coachTurnAction.
+- Final Challenge records all ten final Gate fields; the server recalculates them from evidence. A corrected Final Challenge requires turnCompletionReliable=true, completeAnswerScanned=true, a complete_sentence or multiple_complete_sentences correctionScope, learnerRetried=true, retryScope equal to correctionScope, a complete reliable retryUtterance for that scope, and correct Retry order.
+- Coach problems belong in coachExecutionIssues: false_correction, false_acceptance, unnecessary_correction, meaning_changed_by_correction, incomplete_correction_model, premature_interruption, premature_advance, target_evidence_mismatch, target_usage_missed, correction_retry_bypassed, incorrect_hearing_assumption, unclear_retry_accepted, meaning_reconstructed_without_confirmation, premature_final, final_challenge_skipped, premature_session_completion, coverage_audit_failure, voice_language_violation, wait_spoke, correction_not_terminal, runtime_state_mismatch, pause_misread_as_turn_end, sentence_end_misread_as_turn_end, correction_started_before_answer_complete, complete_answer_not_scanned, fragment_only_correction, later_sentence_error_missed, unnecessary_full_answer_retry, self_correction_ignored, correction_scope_mismatch.
 - Never turn Coach execution issues into Learner weaknesses.
 - Review correctionChecks are optional context and never Required Coverage.
 - If interrupted, report completed=false with the actual remaining queue.
@@ -287,5 +351,10 @@ ${JSON.stringify(schema,null,2)}
 
 OPTIONAL REVIEW REPORT CONTRACT
 ${JSON.stringify(SPEAKING_REPORT_TEMPLATE.correctionChecks[0])}
-Spelling remains not_tested unless a separate spelling task was explicitly requested.`;
+Spelling remains not_tested unless a separate spelling task was explicitly requested.
+
+C. SERVER VALIDATION — AFTER REPORT GENERATION
+English OS validates IDs, sourceVersion, queue order, turnCompletionReliable, completeAnswerScanned, independent target evidence, target usage, complete-sentence Correction and matched-scope Retry evidence, Vocabulary audit, Final Challenge, and completion after the conversation. Never invent missing evidence: no Learner Retry means learnerRetried=false; no Learner-produced target means targetProducedIndependently=false.
+DETAILED REVIEW CONTEXT FOR REPORTING ONLY:
+${JSON.stringify(reviewContext,null,2)}`;
 }

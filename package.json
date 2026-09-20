@@ -1,10 +1,12 @@
 {
   "name": "hanne-english-os",
-  "version": "2.25.6",
+  "version": "2.32.0",
   "private": true,
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/speaking-queue.test.mjs tests/current-item-lock.test.mjs tests/runtime-integrity.test.mjs tests/v254-clean-checkpoints.test.mjs tests/v254-targeted-acceptance.test.mjs tests/v255-vocabulary-only.test.mjs tests/v256-vocabulary-stability.test.mjs && node tests/ui.cjs"
+    "test": "node --test tests/speaking-queue.test.mjs tests/current-item-lock.test.mjs tests/runtime-integrity.test.mjs tests/v254-clean-checkpoints.test.mjs tests/v254-targeted-acceptance.test.mjs tests/v255-vocabulary-only.test.mjs tests/v256-vocabulary-stability.test.mjs tests/v257-runtime-lock.test.mjs tests/v258-live-controller.test.mjs tests/v259-turn-patience.test.mjs tests/v260-three-gate-controller.test.mjs tests/v261-evidence-lock.test.mjs tests/v270-current-word-lock.test.mjs tests/v271-pre-response-action-lock.test.mjs tests/v280-simplified-live-controller.test.mjs tests/v290-voice-runtime-fix.test.mjs tests/v2300-live-runtime-state.test.mjs tests/v2310-turn-completion-correction-retry.test.mjs tests/v2311-minimal-runtime-patch.test.mjs tests/v2312-reliable-listening-final-retry.test.mjs tests/v2313-entire-answer-runtime.test.mjs tests/v2320-deterministic-controller.test.mjs && node tests/ui.cjs"
   },
-  "engines": { "node": ">=22" }
+  "engines": {
+    "node": ">=22"
+  }
 }

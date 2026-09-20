@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import '../src/speaking-queue.js';
 
 const Q=globalThis.EnglishSpeakingQueue;
-const V=Q.SCHEMA_VERSION;
+const V='2.25.6';
 const vocabulary=['niece','ancestor','descendant','sibling','spouse'];
 const lesson={id:'v256-stability',title:'Family',curriculum:{
   mainVocabulary:vocabulary.map(term=>({term})),extendedVocabulary:[],
@@ -31,12 +31,12 @@ test('V2.25.6 globally builds Vocabulary-only dynamic coverage for 5, 8, and 4 w
 
 test('Voice controller is English-first and separated from Report generation',()=>{
   const prompt=fs.readFileSync(new URL('../src/speaking-client.js',import.meta.url),'utf8');
-  assert(prompt.includes('A. LIVE SPEAKING CONTROLLER'));
-  assert(prompt.includes('B. REPORT GENERATION — ONLY AFTER VOICE ENDS'));
-  assert(prompt.indexOf('A. LIVE SPEAKING CONTROLLER')<prompt.indexOf('B. REPORT GENERATION'));
-  assert(prompt.includes('Use English for every Speaking question'));
+  assert(prompt.includes('A. LIVE SPEAKING BRIEF'));
+  assert(prompt.includes('B. REPORT CONTRACT — GENERATE ONLY AFTER VOICE ENDS'));
+  assert(prompt.indexOf('A. LIVE SPEAKING BRIEF')<prompt.indexOf('B. REPORT CONTRACT'));
+  assert(prompt.includes('START IN ENGLISH'));
   assert(prompt.includes('Do you have a niece? Tell me one thing about her.'));
-  assert(prompt.includes('Never begin a Vocabulary task in Chinese'));
+  assert(prompt.includes('Use Chinese only'));
 });
 
 test('Current lesson queue contains all five Vocabulary items in fixed order',()=>{
@@ -50,13 +50,13 @@ test('Multiple blocking errors are captured together and require one complete ac
   const detected=Q.detectImportantLanguageIssues(original,items[0]);
   assert.deepEqual(detected.map(x=>x.category),['important_article_determiner','incomplete_core_sentence_structure','missing_be_verb']);
   const better='I have one niece. She is a very kind girl, and she is five years old.';
-  assert.equal(Q.retrySatisfiesItem(items[0],correction(items[0],original,better,['a one','very kind a girl','she five years old'])),true);
+  assert.equal(Q.retrySatisfiesItem(items[0],correction(items[0],original,better,['a one','very kind a girl','she five years old']),V),true);
 });
 
 test('Correction Lock blocks Next, recast, acknowledgement, and an incorrect Retry',()=>{
   for(const retry of ['', 'Okay.', 'I understand.', 'She very kind girl and she is five years old.']){
     const c={resolution:'retried',learnerRetried:!!retry,retryUtterance:retry,retryLearnerFinished:!!retry,retryUtteranceReliability:'confirmed',retryTranscriptionIssue:false};
-    assert.equal(Q.retrySatisfiesItem(items[0],c),false);
+    assert.equal(Q.retrySatisfiesItem(items[0],c,V),false);
   }
   const blocked=Q.decideCurrentItemTransition({kind:'vocabulary',learnerFinished:true,hearingResolved:true,targetOrTaskResolved:true,importantCorrectionRequired:true,correctionIssued:true,retryReceived:false,retryFinished:false,retryAccepted:false,allowCorrectionDecline:false});
   assert.equal(blocked.runtimeState,'AWAITING_RETRY');assert.equal(blocked.queueAdvance,false);assert.equal(blocked.coachAction,'WAIT_FOR_RETRY');

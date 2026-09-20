@@ -118,7 +118,7 @@ test('Final Challenge is blocked at 4/5 and completes only after the 5/5 audit',
 
 test('Current Speaking Brief is shorter and contains no Grammar Required Coverage runtime',()=>{
   const prompt=fs.readFileSync(new URL('../src/speaking-client.js',import.meta.url),'utf8');
-  assert(prompt.includes('Required Speaking Coverage is selected Vocabulary only'));
-  assert(prompt.includes('fullVocabularyCoverageAudit()'));
+  assert(prompt.includes('Required Speaking Coverage is Vocabulary only'));
+  assert(prompt.includes('compare COMPLETED WORDS with REQUIRED VOCABULARY'));
   for(const removed of ['VOCABULARY → GRAMMAR TRANSITION','Grammar Success Gate','expectedAnswer=capital','three separate tasks'])assert(!prompt.includes(removed));
 });

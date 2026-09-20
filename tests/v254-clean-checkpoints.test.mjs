@@ -89,20 +89,19 @@ function correction(item,original,better){
 }
 
 test('01 Voice starts immediately with a real lesson question',()=>{
-  assert(prompt.includes('VOICE MODE: begin immediately'));
-  assert(prompt.includes('The next Coach turn must contain an actual lesson question.'));
+  assert(prompt.includes('VOICE MODE: begin immediately with one short English question'));
 });
 test('02 Questions stay simple and I do not understand simplifies the same task',()=>{
-  assert(prompt.includes('ASK SIMPLE, NATURAL QUESTIONS'));
-  assert(prompt.includes("If the learner says “I don't understand”, simplify the same task"));
+  assert(prompt.includes('Ask one simple, natural English question'));
+  assert(prompt.includes("If the learner says “I don't understand,” simplify the same task"));
 });
 test('03 Important correction waits for a complete Retry before advance',()=>{
-  assert(prompt.includes('Then WAIT for the whole Retry'));
-  assert(prompt.includes('CORRECTION → LEARNER RETRY → WAIT.'));
+  assert(prompt.includes('Stop and wait'));
+  assert(prompt.includes('While Retry is pending, NEXT is blocked'));
 });
 test('04 Unclear hearing asks for confirmation and never guesses meaning',()=>{
-  assert(prompt.includes('HARD RULE — NO EVALUATION WITHOUT HEARING CONFIRMATION'));
-  assert(prompt.includes('Never reconstruct or semantically guess damaged audio'));
+  assert(prompt.includes('If audio is unclear'));
+  assert(prompt.includes('Never reconstruct speech'));
 });
 test('05 First unresolved item remains descendant after niece and ancestor',()=>{
   const out=Q.applyReport(fresh(),report(items.slice(0,2).map(evidence)));
@@ -110,8 +109,7 @@ test('05 First unresolved item remains descendant after niece and ancestor',()=>
   assert.equal(items[2].target,'descendant');
 });
 test('06 Yes or Next continues instead of ending the session',()=>{
-  assert(prompt.includes('“Yes” after “shall we continue?” means continue, never wrap up'));
-  assert(prompt.includes('Next / Next question / Let\'s continue / Okay / Yeah means continue only after the current item resolves'));
+  assert(prompt.includes('“Next”, “Okay”, or “Yeah” does not skip an unfinished word or Retry'));
 });
 test('07 my mom plus Capital is incorrect and remains locked until correction Retry',()=>{
   const rows=items.slice(0,7).map(evidence);
@@ -145,7 +143,7 @@ test('09 One remaining Coverage item blocks Final Challenge and completion',()=>
   assert.equal(Q.applyReport(fresh(),r).state.completed,false);
 });
 test('10 A pause is thinking time and cannot finish the learner turn',()=>{
-  assert(prompt.includes('Pauses, “um”, “I think”, “maybe”'));
+  assert(prompt.includes('A pause is not a finished answer'));
   const row=evidence(items[0],0,{
     learnerUtterance:'My niece is... um...',learnerFinished:false,status:'not_tested',
     currentItemStateHistory:['PENDING','ACTIVE','AWAITING_LEARNER','TARGET_UNRESOLVED'],

@@ -1,126 +1,178 @@
-const vm=require('vm'),fs=require('fs'),assert=require('assert/strict');
-const html=fs.readFileSync(require('path').join(__dirname,'../index.html'),'utf8'),source=html.match(/<script>([\s\S]*?)<\/script>/)[1];
-class Storage{constructor(){this.m=new Map()}get length(){return this.m.size}key(i){return [...this.m.keys()][i]??null}getItem(k){return this.m.get(String(k))??null}setItem(k,v){this.m.set(String(k),String(v))}removeItem(k){this.m.delete(String(k))}clear(){this.m.clear()}}
-const nodes=new Map(),intervals=new Map();let sequence=0,clipboard='';
-function decode(v){return v.replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&')}
-class Element{constructor(id='',tag='div',attrs={}){this.id=id;this.tagName=tag.toUpperCase();this.value=attrs.value||'';this.className=attrs.class||'';this.style={};this.dataset={};this.attrs=attrs;this.children=[];this._html='';this._text='';this.disabled=false;this.parentElement={insertBefore:()=>{}};if(id)nodes.set(id,this);for(const [k,v]of Object.entries(attrs))if(k.startsWith('data-'))this.dataset[k.slice(5).replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]=v;this.classList={contains:x=>this.className.split(' ').includes(x),add:x=>{if(!this.classList.contains(x))this.className+=' '+x},remove:x=>{this.className=this.className.split(' ').filter(c=>c!==x).join(' ')},toggle:(x,v)=>{(v??!this.classList.contains(x))?this.classList.add(x):this.classList.remove(x)}}}
- set innerHTML(s){this._html=s;this._text='';this.children=parse(s);if(this.tagName==='SELECT')this.value=this.children.find(c=>c.tagName==='OPTION')?.attrs.value||''}get innerHTML(){return this._html}
- set textContent(s){this._text=String(s);this._html=''}get textContent(){return this._text||decode(this._html.replace(/<[^>]*>/g,''))}
- querySelectorAll(s){return query(this.children,s)}contains(){return false}dispatchEvent(e){this['on'+e.type]?.({target:this})}
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const vm=require('node:vm');
+const crypto=require('node:crypto');
+const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
+const source=html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+if(!source)throw new Error('Application script missing.');
+const clone=value=>JSON.parse(JSON.stringify(value));
+const lesson={id:'A',title:'家庭成員',curriculum:{lessonConcept:[{title:'Family',details:['People in a family'],sourcePages:[1]}],unclassifiedVocabulary:[{term:'relative',meaning:'親戚',sourcePages:[1]}],mainVocabulary:[{term:'spouse',meaning:'配偶',examples:['My spouse is kind.'],sourcePages:[2]}],extendedVocabulary:[{term:'descendant',meaning:'後代',examples:[],sourcePages:[3]}],grammar:[{rule:'Use an article before a singular count noun.',examples:['He is a teacher.'],sourcePages:[4]}],conversationReference:[{title:'At home',content:['How is your family?'],sourcePages:[5]}]}};
+const oldSession={id:'sess_old',lessonId:'A',lessonTitle:'家庭成員',endedAt:'2026-09-30T00:00:00Z',answers:[{id:'sentence',component:'Vocabulary',kind:'open',round:'production',target:'spouse',question:'Use spouse in a sentence.',userAnswer:'My spouse good.',status:'answered',needsGPT:true}]};
+const oldReport={type:'GPT_CHECK_REPORT',sessionId:'sess_old',lessonId:'A',lessonTitle:'家庭成員',gradedAnswers:[{id:'sentence',component:'Vocabulary',target:'spouse',status:'incorrect',original:'My spouse good.',better:'My spouse is good.',reason:'Add is.',corrected:false}]};
+const archivedSpeaking={type:'SPEAKING_REPORT',speakingSessionId:'speak_archive',continuationAttemptId:'attempt_archive',lessonId:'A',serverVerified:true};
+const remote={version:1,state:{english_os_lessons:JSON.stringify([lesson]),english_os_sessions:JSON.stringify([oldSession]),english_os_gpt_reports:JSON.stringify([oldReport]),english_os_learning_signals:JSON.stringify([{target:'archived-only',component:'Vocabulary',lessonId:'A',reason:'speaking_review',speakingReportKey:'archived'}]),english_os_lesson_state_A:JSON.stringify({vocabulary:{spouse:{meaning:{attempts:1,score:1,status:'developing'}}}}),english_os_speaking_reports:JSON.stringify([archivedSpeaking])},writes:0,speakingCalls:0};
+remote.state.english_os_weaknesses=JSON.stringify({vocabulary:['spouse','not-in-materials'],grammar:['Use an article before a singular count noun.'],concept:[]});
+function createApp(seed=new Map()){
+ const nodes=new Map(),intervals=new Map(),copied=[];let sequence=0;
+ class Storage{constructor(){this.m=new Map(seed)}get length(){return this.m.size}key(i){return [...this.m.keys()][i]??null}getItem(k){return this.m.get(String(k))??null}setItem(k,v){this.m.set(String(k),String(v))}removeItem(k){this.m.delete(String(k))}clear(){this.m.clear()}}
+ function decode(v){return v.replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&')}
+ class Element{constructor(id='',tag='div',attrs={}){this.id=id;this.tagName=tag.toUpperCase();this.value=attrs.value||'';this.className=attrs.class||'';this.style={};this.dataset={};this.attrs=attrs;this.children=[];this._html='';this._text='';this.disabled=false;this.parentElement={insertBefore:()=>{}};if(id)nodes.set(id,this);for(const [k,v]of Object.entries(attrs))if(k.startsWith('data-'))this.dataset[k.slice(5).replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]=v;this.classList={contains:x=>this.className.split(' ').includes(x),add:x=>{if(!this.classList.contains(x))this.className+=' '+x},remove:x=>{this.className=this.className.split(' ').filter(c=>c!==x).join(' ')},toggle:(x,v)=>{(v??!this.classList.contains(x))?this.classList.add(x):this.classList.remove(x)}}}
+  set innerHTML(value){this._html=value;this._text='';this.children=parse(value);if(this.tagName==='SELECT')this.value=this.children.find(c=>c.tagName==='OPTION')?.attrs.value||''}get innerHTML(){return this._html}
+  set textContent(value){this._text=String(value);this._html=''}get textContent(){return this._text||decode(this._html.replace(/<[^>]*>/g,''))}
+  querySelectorAll(selector){return query(this.children,selector)}contains(){return false}dispatchEvent(event){this['on'+event.type]?.({target:this})}focus(){}scrollIntoView(){}
+ }
+ function parse(markup){return [...markup.matchAll(/<(\w+)([^>]*)>/g)].map(match=>{const attrs={};for(const part of match[2].matchAll(/([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g))attrs[part[1]]=decode(part[2]??part[3]??part[4]);return new Element(attrs.id||'',match[1],attrs)})}
+ const all=parse(html);
+ function query(elements,selector){if(selector==='.nav button')return all.filter(e=>e.tagName==='BUTTON'&&e.dataset.page);if(selector==='.tab'||selector==='.page')return all.filter(e=>e.classList.contains(selector.slice(1)));if(selector==='.topic-input')return (nodes.get('learnAnswerArea')?.children||[]).filter(e=>e.classList.contains('topic-input'));if(selector.startsWith('[data-'))return elements.filter(e=>Object.hasOwn(e.attrs,selector.slice(1,-1)));return []}
+ const localStorage=new Storage();
+ const sandbox={crypto,console,Storage,localStorage,document:{getElementById:id=>nodes.get(id)||null,querySelectorAll:selector=>query(all,selector),activeElement:{tagName:'BODY'},createElement:tag=>new Element('',tag)},navigator:{clipboard:{writeText:async value=>{copied.push(value)}}},setInterval:fn=>{intervals.set(++sequence,fn);return sequence},clearInterval:id=>intervals.delete(id),setTimeout:()=>++sequence,clearTimeout:()=>{},fetch:async(url,options={})=>{if(url.includes('/functions/v1/speaking-queue')){remote.speakingCalls++;throw new Error('Old Speaking endpoint invoked.')}if(url.includes('/rest/v1/english_os_state')){if(options.method==='POST'){const body=JSON.parse(options.body);remote.state=clone(body.state);remote.version=body.version;remote.writes++;return {ok:true,json:async()=>[]}}return {ok:true,json:async()=>[{state:clone(remote.state),version:remote.version}]}}return {ok:true,json:async()=>[]}},confirm:()=>true,Event:class{constructor(type){this.type=type}},Math,Date,JSON,Map,Set,encodeURIComponent};
+ sandbox.window=sandbox;sandbox.addEventListener=()=>{};
+ vm.createContext(sandbox);vm.runInContext(source,sandbox);
+ return {run:code=>vm.runInContext(code,sandbox),json:code=>clone(vm.runInContext(code,sandbox)),get:id=>nodes.get(id),localStorage,copied};
 }
-function parse(s){return [...s.matchAll(/<(\w+)([^>]*)>/g)].map(m=>{const attrs={};for(const a of m[2].matchAll(/([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g))attrs[a[1]]=decode(a[2]??a[3]??a[4]);return new Element(attrs.id||'',m[1],attrs)})}
-const all=parse(html);
-function query(arr,s){if(s==='.nav button')return all.filter(e=>e.tagName==='BUTTON'&&e.dataset.page);if(s==='.tab'||s==='.page')return all.filter(e=>e.classList.contains(s.slice(1)));if(s==='.topic-input')return (nodes.get('learnAnswerArea')?.children||[]).filter(e=>e.classList.contains('topic-input'));if(s.startsWith('[data-'))return arr.filter(e=>Object.hasOwn(e.attrs,s.slice(1,-1)));return []}
-const sandbox={console,Storage,localStorage:new Storage(),document:{getElementById:id=>nodes.get(id)||null,querySelectorAll:s=>query(all,s),activeElement:{tagName:'BODY'},createElement:tag=>new Element('',tag)},navigator:{clipboard:{writeText:async x=>{clipboard=x}}},setInterval:fn=>{intervals.set(++sequence,fn);return sequence},clearInterval:id=>intervals.delete(id),setTimeout:()=>++sequence,clearTimeout:()=>{},fetch:async()=>({ok:true,json:async()=>[]}),confirm:()=>true,Event:class{constructor(type){this.type=type}},Math,Date,JSON,Map,Set,encodeURIComponent};sandbox.window=sandbox;sandbox.addEventListener=()=>{};vm.createContext(sandbox);vm.runInContext(source,sandbox);
-function run(s){return vm.runInContext(s,sandbox)}
-function json(s){return JSON.parse(JSON.stringify(run(s)))}
-let passed=0;const results=[];
-async function test(name,fn){try{await fn();passed++;results.push('PASS '+name)}catch(e){results.push('FAIL '+name+'\n'+e.stack);throw e}}
-const snapshot=()=>json('localSyncSnapshot()');
-setImmediate(async()=>{try{
-run(`
-const fixtureLessons=[{id:'A',title:'家庭成員',curriculum:{lessonConcept:[],unclassifiedVocabulary:[],mainVocabulary:[{term:'spouse',meaning:'配偶',examples:[]},{term:'descendant',meaning:'後代',examples:[]},{term:'niece',meaning:'姪女',examples:[]},{term:'ancestor',meaning:'祖先',examples:[]},{term:'sibling',meaning:'兄弟姊妹',examples:[]}],extendedVocabulary:[],grammar:[{rule:'稱謂後面加上名字時，兩者都需要大寫。'},{rule:'直接用稱謂代替人名時要大寫。'},{rule:'「誰的＋稱謂」中的稱謂用小寫。'}],conversationReference:[]}},{id:'B',title:'另一課',curriculum:{lessonConcept:[],unclassifiedVocabulary:[],mainVocabulary:[{term:'spouse',meaning:'配偶',examples:[]}],extendedVocabulary:[],grammar:[],conversationReference:[]}}];
-localStorage.setItem('english_os_lessons',JSON.stringify(fixtureLessons));
-const sessionA={id:'A1',lessonId:'A',lessonTitle:'家庭成員',activeSeconds:125,endedAt:'2026-09-14T11:00:00Z',answers:[
-{id:'sentence',target:'spouse',component:'Vocabulary',kind:'open',round:'production',question:'Use spouse in a sentence.',userAnswer:' I hope your name in spouse. ',intendedChinese:'希望你的名字出現在我的身分證配偶欄。',needsGPT:true},
-{id:'pending',target:'descendant',component:'Vocabulary',kind:'open',question:'Use descendant.',userAnswer:'King descendant is he.',needsGPT:true},
-{id:'v_topic_meaning',target:'English → Chinese',component:'Vocabulary',kind:'vocab_topic_meaning',rows:{spouse:{meaningAnswer:'妻子',prompt:'spouse',referenceAnswer:'配偶'},forgotten:{meaningAnswer:'',meaningForgot:true,prompt:'forgotten',referenceAnswer:'忘記的'},missing:{meaningAnswer:'wrong',meaningPromptMissing:true,prompt:'missing'},blank:{meaningAnswer:'',prompt:'blank'}}},
-{id:'v_topic_spelling',component:'Vocabulary',kind:'vocab_topic_spelling',rows:{spouse:{spellingAnswer:'spouce',prompt:'配偶'}}}
-]};
-const sessionB={id:'B1',lessonId:'B',lessonTitle:'另一課',activeSeconds:5,endedAt:'2026-09-14T10:00:00Z',answers:[{id:'sentence',target:'spouse',component:'Vocabulary',kind:'open',question:'Another question.',userAnswer:'OTHER LESSON ORIGINAL',needsGPT:true}]};
-localStorage.setItem('english_os_sessions',JSON.stringify([sessionA,sessionB]));
-const reportA={sessionId:'A1',lessonId:'A',importedAt:'2026-09-14T12:00:00Z',gradedAnswers:[
-{id:'sentence',target:'FAKE TARGET',component:'Vocabulary',status:'incorrect',original:'FAKE GPT ORIGINAL',better:'I hope your name will be in the spouse section of my ID card.',whatWasRight:'有運用 spouse。',reason:'補上完整動詞。',ruleOrPattern:'I hope + clause.',similarExamples:[{english:'I hope you are happy.',chinese:'我希望你快樂。'}],corrected:true,correctionAnswer:' I hope your name will appear in the spouse section of my ID card. ',correctedAt:'2026-09-14T13:00:00Z'},
-{id:'pending',status:'incorrect',better:'He is a descendant of that king.',corrected:false,correctionAnswer:'UNSAVED DRAFT'},
-{id:'v_topic_meaning::spouse',status:'incorrect',better:'配偶',corrected:true,correctionAnswer:'配偶'},
-{id:'v_topic_meaning::forgotten',status:'incorrect',better:'忘記的',corrected:false},
-{id:'v_topic_meaning::missing',status:'incorrect',better:'SHOULD NOT ENTER'},
-{id:'v_topic_meaning::blank',status:'incorrect',better:'SHOULD NOT ENTER'},
-{id:'v_topic_spelling::spouse',status:'incorrect',better:'spouse',corrected:false},
-{id:'v_topic_meaning',target:'English → Chinese',status:'incorrect',original:'undefined'}]};
-const reportB={sessionId:'B1',lessonId:'B',importedAt:'2026-09-14T12:00:00Z',gradedAnswers:[{id:'sentence',status:'incorrect',better:'OTHER GPT SUGGESTION',corrected:true,correctionAnswer:'OTHER LEARNER CORRECTION'}]};
-localStorage.setItem('english_os_gpt_reports',JSON.stringify([reportA,reportB]));
-populateSpeakingLessons();$('speakingLesson').value='A';
-`);
-await test('Selected lesson carries original, GPT suggestion, and saved correction separately',()=>{const x=json('speakingHandoffData("A").currentLessonCorrections.find(x=>x.itemId==="sentence")');assert.equal(x.originalAnswer,' I hope your name in spouse. ');assert.equal(x.gptSuggestedAnswer,'I hope your name will be in the spouse section of my ID card.');assert.equal(x.learnerCorrection,' I hope your name will appear in the spouse section of my ID card. ');assert.equal(x.target,'spouse');assert.equal(x.intendedChinese,'希望你的名字出現在我的身分證配偶欄。')});
-await test('Teaching pattern and examples survive handoff',()=>{const x=json('speakingHandoffData("A").currentLessonCorrections.find(x=>x.itemId==="sentence")');assert.equal(x.teachingFeedback.ruleOrPattern,'I hope + clause.');assert.equal(x.teachingFeedback.similarExamples[0].chinese,'我希望你快樂。')});
-await test('Saved correction starts unverified and not mastered',()=>{const x=json('speakingCorrectionRecords().find(x=>x.sessionId==="A1"&&x.itemId==="sentence")');assert.equal(x.correctionStatus,'corrected_needs_review');assert.equal(x.writtenValidationStatus,'not_checked');assert.equal(x.oralValidationStatus,'not_tested')});
-await test('Unsubmitted draft is not falsely passed as a learner correction',()=>{const x=json('speakingCorrectionRecords().find(x=>x.itemId==="pending")');assert.equal(x.learnerCorrection,null);assert.equal(x.correctionStatus,'not_corrected')});
-await test('Missing questions, blanks and unresolved legacy page excluded',()=>{const x=json('speakingCorrectionRecords()');assert(!x.some(x=>['missing','blank','English → Chinese'].includes(x.target)));assert.equal(x.length,6)});
-await test('Forgotten word retains identity and empty original answer',()=>{const x=json('speakingCorrectionRecords().find(x=>x.target==="forgotten")');assert.equal(x.originalAnswer,'');assert.equal(x.answerStatus,'forgot');assert.equal(x.learnerCorrection,null)});
-await test('Same word across sessions and directions keeps distinct IDs',()=>{const x=json('speakingCorrectionRecords().filter(x=>x.target==="spouse")');assert.equal(new Set(x.map(x=>x.correctionId)).size,4)});
-await test('Another lesson is clearly separated as related review',()=>{const x=json('speakingHandoffData("A")');assert(x.currentLessonCorrections.every(x=>x.lessonId==='A'));assert.equal(x.olderReviewCorrections.length,1);assert.equal(x.olderReviewCorrections[0].originalAnswer,'OTHER LESSON ORIGINAL')});
-await test('Newer duplicate report takes precedence over older incorrect report',()=>{run(`localStorage.setItem('english_os_gpt_reports',JSON.stringify([reportA,reportB,{...reportA,importedAt:'2026-09-15T00:00:00Z',gradedAnswers:[{id:'sentence',status:'correct'}]}]))`);assert.equal(json('speakingCorrectionRecords().filter(x=>x.lessonId==="A")').length,0);run(`localStorage.setItem('english_os_gpt_reports',JSON.stringify([reportA,reportB]))`)});
-run(`
-function makeSpeakingReport(){const c=speakingHandoffData('A').currentLessonCorrections.find(c=>c.itemId==='sentence');return {type:'SPEAKING_REPORT',schemaVersion:'2.19.1',speakingSessionId:'test-speaking-1',lessonId:'A',correctionChecks:[{correctionId:c.correctionId,...speakingCorrectionSnapshot(c),writtenStatus:'correct',oralTransfer:'passed',newPrompt:'Introduce your spouse to a new colleague.',learnerUtterance:'This is my spouse, Alex.',reason:'書面句子完整，新情境也正確使用 spouse。'}],targetsToReview:[],grammarToReview:[],completed:true}}
-`);
-await test('Import saves independent written and oral checks',()=>{const before=run('localStorage.getItem("english_os_gpt_reports")');const r=json('saveSpeakingReport(makeSpeakingReport())');assert.equal(r.correctionChecks[0].writtenStatus,'correct');assert.equal(r.correctionChecks[0].oralTransfer,'passed');assert.equal(r.correctionChecks[0].contextSnapshot.learnerCorrection,' I hope your name will appear in the spouse section of my ID card. ');assert.equal(run('localStorage.getItem("english_os_gpt_reports")'),before)});
-await test('Speaking check does not mark mastered or overwrite learning scores',()=>{assert.equal(run('localStorage.getItem("english_os_lesson_state_A")'),null);assert.equal(json('speakingCorrectionRecords().find(x=>x.itemId==="sentence"&&x.lessonId==="A")').correctionStatus,'corrected_needs_review');assert(json('buildReviewQueue()').some(x=>x.target==='spouse'))});
-await test('Legacy writing validation retained; absent oral reliability is not silently confirmed',()=>{const x=json('speakingCorrectionRecords().find(x=>x.itemId==="sentence"&&x.lessonId==="A")');assert.equal(x.writtenValidationStatus,'correct');assert.equal(x.oralValidationStatus,'not_tested');assert.equal(x.previousSpeakingAssessment.oral,null);assert.equal(x.previousSpeakingAssessment.unverifiedOral.reportedOutcome,'passed')});
-await test('Duplicate import is idempotent',()=>{run('saveSpeakingReport(makeSpeakingReport())');assert.equal(json('JSON.parse(localStorage.getItem("english_os_speaking_reports"))').length,1)});
-await test('Editing saved correction invalidates prior validation context',()=>{run(`const revised=JSON.parse(localStorage.getItem('english_os_gpt_reports'));revised[0].gradedAnswers[0].correctionAnswer='Another revision';localStorage.setItem('english_os_gpt_reports',JSON.stringify(revised))`);const x=json('speakingCorrectionRecords().find(x=>x.itemId==="sentence"&&x.lessonId==="A")');assert.equal(x.writtenValidationStatus,'not_checked');assert.equal(x.oralValidationStatus,'not_tested');run(`localStorage.setItem('english_os_gpt_reports',JSON.stringify([reportA,reportB]))`)});
-async function rejects(name,mutation){await test(name,()=>{const before=snapshot();run(`var invalid=makeSpeakingReport();invalid.speakingSessionId='invalid-test';${mutation}`);assert.throws(()=>run('saveSpeakingReport(invalid)'));assert.deepEqual(snapshot(),before)})}
-await rejects('Stale correction answer rejected without data writes',`invalid.correctionChecks[0].learnerCorrection='STALE';`);
-await rejects('Wrong original snapshot rejected',`invalid.correctionChecks[0].originalAnswer='FAKE';`);
-await rejects('Unknown correction ID rejected',`invalid.correctionChecks[0].correctionId='missing-id';`);
-await rejects('Duplicate correction entries rejected',`invalid.correctionChecks.push(invalid.correctionChecks[0]);`);
-await rejects('Oral pass requires actual new question and learner utterance',`invalid.correctionChecks[0].learnerUtterance='';`);
-await rejects('Oral pass with missing new scenario rejected',`invalid.correctionChecks[0].newPrompt='';`);
-await rejects('Unknown written status rejected',`invalid.correctionChecks[0].writtenStatus='mastered';`);
-await rejects('Revision needed requires a suggested correction',`invalid.correctionChecks[0].writtenStatus='needs_revision';`);
-await rejects('Unsubmitted correction cannot be marked written correct',`const c=speakingHandoffData('A').currentLessonCorrections.find(c=>c.itemId==='pending');invalid.correctionChecks=[{correctionId:c.correctionId,...speakingCorrectionSnapshot(c),writtenStatus:'correct',oralTransfer:'not_tested',reason:'fake'}];`);
-await rejects('Malformed legacy arrays rejected before any saves',`invalid.targetsToReview='not-an-array';`);
-await test('Needs revision and oral practice preserve source lesson in Review',()=>{run(`let retry=makeSpeakingReport();retry.speakingSessionId='test-speaking-2';retry.correctionChecks[0].writtenStatus='needs_revision';retry.correctionChecks[0].suggestedCorrection='A better version.';retry.correctionChecks[0].oralTransfer='needs_practice';saveSpeakingReport(retry);`);assert(json('buildReviewQueue()').some(x=>x.lessonId==='A'&&x.target==='spouse'&&x.reasons.includes('speaking_review')))});
-await test('Older-course check links review signal to its source course',()=>{run(`const oldContext=speakingHandoffData('A').olderReviewCorrections[0];saveSpeakingReport({type:'SPEAKING_REPORT',speakingSessionId:'test-other-lesson',lessonId:'A',correctionChecks:[{correctionId:oldContext.correctionId,...speakingCorrectionSnapshot(oldContext),writtenStatus:'needs_revision',suggestedCorrection:'A better answer.',oralTransfer:'not_tested',reason:'Needs a verb.'}]})`);const sig=json('JSON.parse(localStorage.getItem("english_os_learning_signals"))');assert(sig.some(x=>x.speakingReportKey==='test-other-lesson'&&x.lessonId==='B'&&x.sessionId==='B1'))});
-await test('Old Speaking report schema remains compatible',()=>{run(`saveSpeakingReport({type:'SPEAKING_REPORT',lessonId:'A',targetsToReview:['sibling'],grammarToReview:['be verbs'],betterExpressions:[{original:'x',better:'y',reason:'z'}]})`);assert(!json('buildReviewQueue()').some(x=>x.target==='sibling'));assert(!json('buildReviewQueue()').some(x=>x.target==='be verbs'));assert.deepEqual(json('JSON.parse(localStorage.getItem("english_os_speaking_reports")).at(-1).targetsToReview'),['sibling'])});
-await test('Prose plus one Speaking JSON block parses and imports',()=>{const r=run('makeSpeakingReport()');r.speakingSessionId='prose-report';sandbox.prose='這次的說明\n```json\n'+JSON.stringify(r)+'\n```';assert(run('importSpeakingReportText(prose)'));assert(nodes.get('speakingChecks').innerHTML.includes('最近一次口說回報'))});
-await test('Output escapes feedback HTML in results',()=>{run(`const escaped=makeSpeakingReport();escaped.speakingSessionId='html-report';escaped.correctionChecks[0].reason='<img src=x onerror=alert(1)>';saveSpeakingReport(escaped);renderSpeakingChecks()`);assert(!nodes.get('speakingChecks').innerHTML.includes('<img'));assert(nodes.get('speakingChecks').innerHTML.includes('&lt;img'))});
-const {createSpeakingService}=await import('../src/speaking-service.mjs');
-const db=new Map();let counter=0,cloud={},offline=false;
-const service=createSpeakingService({source:async()=>structuredClone(cloud),get:async id=>structuredClone(db.get(id)||null),latest:async id=>structuredClone([...db.values()].filter(x=>x.lesson_id===id).at(-1)||null),save:async(s,r)=>{const row=db.get(s.speakingSessionId);if(r===null?!!row:row?.revision!==r)return false;db.set(s.speakingSessionId,{lesson_id:s.lessonId,state:structuredClone(s),revision:(r||0)+1});return true}},()=>String(++counter));
-sandbox.fetch=async(url,options={})=>{
- if(url.includes('/functions/v1/speaking-queue')){if(offline)throw new Error('offline');try{return {ok:true,json:async()=>await service(JSON.parse(options.body))}}catch(e){return {ok:false,json:async()=>({error:e.message})}}}
- if(options.method==='POST')cloud=JSON.parse(options.body).state;
- return {ok:true,json:async()=>[]};
-};
-run(`localStorage.setItem('english_os_gpt_reports',JSON.stringify([reportA,reportB]));localStorage.setItem('english_os_speaking_reports','[]');localStorage.setItem('english_os_learning_signals','[]');$('speakingLesson').value='A';`);
-await test('UI prepares 5-item Vocabulary-only queue and keeps corrections as reporting context',async()=>{await run('$("buildSpeakingBrief").onclick()');const b=nodes.get('speakingBrief').value;assert(b.includes('REQUIRED VOCABULARY:'));assert(b.indexOf('CURRENT WORD')<b.indexOf('THE LIVE LOOP'));assert(b.indexOf('REMAINING WORDS')<b.indexOf('B. REPORT CONTRACT'));assert(!nodes.has('correctionBrief'));assert(nodes.has('gptCheckBrief'));assert(nodes.get('speakingQueuePanel').innerHTML.includes('Vocabulary Coverage: 0 / 5'));assert(nodes.get('speakingQueuePanel').innerHTML.includes('Vocabulary'));assert(!nodes.get('speakingQueuePanel').innerHTML.includes('<b>Grammar</b>'));assert.equal(json('speakingQueueCache.A.queue').length,5);assert(!json('speakingQueueCache.A.queue').some(x=>x.kind!=='vocabulary'));assert(b.includes(' I hope your name in spouse. '));assert(!b.includes('FAKE GPT ORIGINAL'));assert(b.includes('handle only the one immediate blocking problem'));assert(b.includes('“Next”, “Okay”, or “Yeah”'));assert(b.includes('Take your time'))});
-await test('V2.31.3 keeps historical answers out of the Live Voice section',()=>{const b=nodes.get('speakingBrief').value,live=b.slice(b.indexOf('A. LIVE SPEAKING BRIEF'),b.indexOf('B. REPORT CONTRACT'));assert(!live.includes('I hope your name in spouse.'));assert(live.includes('LIVE OBSERVATION PRIORITIES — ABSTRACT ONLY'));assert(b.slice(b.indexOf('B. REPORT CONTRACT')).includes('I hope your name in spouse.'))});
-await test('A: Normal Voice start immediately asks a lesson question',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('VOICE MODE: begin immediately with one short English question'));assert(b.includes('CURRENT WORD'))});
-await test('B: Let us practice triggers the first lesson question',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('If the learner says “Let\'s practice”'));assert(b.includes('Do you have a niece?'))});
-await test('C: Voice begins without a readiness loop',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('Do not run a readiness loop'));assert(b.includes('begin immediately'))});
-await test('D: Live loop starts with a natural current-word question',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('Ask one simple, natural English question'));assert(b.includes('stay on the CURRENT WORD'))});
-await test('E: Learner never selects the topic or scenario',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('Do not ask the learner to choose the topic.'))});
-await test('I: Repeated readiness loop is explicitly prohibited',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('Do not run a readiness loop'));assert(b.includes('begin immediately'))});
-await test('Text and Voice modes have distinct instructions',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('TEXT MODE:'));assert(b.includes('VOICE MODE:'));assert(b.includes('口說內容已準備好'))});
-await test('V2.25.2 A: unclear target transcript requires clarification before evaluation',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('If audio is unclear'));assert(b.includes('did you say ‘descendant’'));assert(b.includes('ASR uncertainty is not a Learner error'))});
-await test('V2.25.2 B: hearing confirmation records clarification evidence',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('"hearing": "clear|clarified|unresolved"'));assert(b.includes('"clarificationPrompt": ""'));assert(b.includes('"clarificationResponse": ""'))});
-await test('V2.25.8 C: concept answer without target starts progressive recall support',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('natural follow-up, small hint, clearer hint, then the target only if necessary'));assert(b.includes('A Coach-supplied word does not count'))});
-await test('V2.28.0: reliable target plus important grammar error blocks NEXT until Retry',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('COMPLETE-ANSWER LANGUAGE SCAN'));assert(b.includes('Now try it again'))});
-await test('V2.25.2 E: praise cannot bypass required correction',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('handle only the one immediate blocking problem'))});
-await test('V2.25.8 F: Grammar is absent from Speaking Required Coverage',()=>{const b=nodes.get('speakingBrief').value,summary=nodes.get('speakingContextSummary').innerHTML;assert(b.includes('Required Speaking Coverage is Vocabulary only'));assert(summary.includes('Required Coverage 只包含本課 Vocabulary；Grammar'));assert(!summary.includes('Vocabulary＋Grammar'));assert(!b.includes('VOCABULARY → GRAMMAR TRANSITION'));assert(!json('speakingQueueCache.A.queue').some(x=>x.kind==='grammar'))});
-await test('V2.25.8 G: ordinary Next never skips unresolved current item',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('“Next”, “Okay”, or “Yeah” does not skip an unfinished word or Retry'))});
-await test('V2.25.8 H: explicit Skip is distinct and remains unresolved',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('Only explicit wording such as “Skip this word” records EXPLICITLY_SKIPPED'));assert(b.includes('the word remains incomplete'))});
-await test('V2.25.8 I: learner completeness question triggers full Vocabulary audit',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('If asked “Are we finished?” or “Did we practice everything?”'));assert(b.includes('audit first'))});
-await test('V2.25.8 J: false correction validation precedes Correction',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('false_correction'));assert(run('typeof EnglishSpeakingQueue.validateCorrection')==='function')});
-await test('V2.25.8 K: Vocabulary Coverage total is dynamic and never hardcoded to 5',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('The count is dynamic; use the actual queue and never assume five words.'));assert(!b.includes('6 Vocabulary + 4 Grammar has 10'))});
-await test('V2.25.8 L: remaining Coverage blocks Final Challenge',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('Start Final Challenge only when every required word is complete'));assert(b.includes('return to the first missing word'))});
-await test('V2.25.2 M: passed Pre-Final audit is recorded in Report',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('preFinalAuditPassed'));assert(b.includes('remainingCoverageBeforeChallenge'));assert(b.includes('auditedCoverageIds'))});
-await test('V2.25.8 N: Learner pause during Retry does not finish the turn',()=>{const b=nodes.get('speakingBrief').value;assert(b.includes('A pause is not a finished answer'));assert(b.includes('An incorrect, unfinished, or fragment-only Retry stays on CURRENT WORD'))});
-await test('Late status response cannot erase a newly prepared queue',async()=>{const realFetch=sandbox.fetch;let resolveStatus;let hold=true;sandbox.fetch=async(url,opts={})=>{if(hold&&url.includes('/functions/v1/speaking-queue')&&JSON.parse(opts.body).action==='status'){hold=false;return new Promise(resolve=>{resolveStatus=resolve})}return realFetch(url,opts)};const pending=run('refreshSpeakingQueue()');await run('prepareSpeakingQueue()');resolveStatus({ok:true,json:async()=>({state:null})});await pending;assert.equal(json('speakingQueueCache.A').sessionCoverage.total,5);sandbox.fetch=realFetch});
-await test('Repeated prepare/copy reuses same attempt',async()=>{const a=json('speakingQueueCache.A');await run('$("copySpeakingBrief").onclick()');assert.equal(json('speakingQueueCache.A').activeAttempt.id,a.activeAttempt.id);assert(clipboard.includes(a.speakingSessionId))});
-const s=json('speakingQueueCache.A');
-function queueReport(count=2){
-  const first=s.queue[0],original='My '+first.target+' like music.',better='My '+first.target+' likes music.';
-  return {type:'SPEAKING_REPORT',schemaVersion:'2.32.0',speakingSessionId:s.speakingSessionId,continuationAttemptId:s.activeAttempt.id,lessonId:'A',completed:true,endReason:'completed',stopContext:{externalReason:'',learnerWords:'',clarificationPrompt:'',clarificationResponse:'',coachInitiatedWrapUp:false},speakingMinutes:25,timeBasis:'measured',phaseProgress:['warmup','lesson_application','knowledge_integration','final_challenge'].map((phaseId,i)=>({phaseId,status:i===0?'completed':i===1?'partial':'not_started',notes:i<2?'實際練習':' '})),runtimeQueue:{totalRequiredCoverage:s.queue.length,resolvedCoverage:count,remainingCoverage:s.queue.length-count,currentCoverageId:s.queue[count]?.coverageId||null,currentRequiredItem:s.queue[count]?.coverageId||null,correctionLockCount:0,allEvidenceValid:false,sessionState:count===s.queue.length?'FINAL_CHALLENGE':'REQUIRED_PRACTICE'},coachExecutionIssues:[],coverageChecks:s.queue.slice(0,count).map((x,i)=>({coverageId:x.coverageId,sourceVersion:x.sourceVersion,taskMode:x.taskMode,phaseId:'lesson_application',queuePosition:i+1,attemptSequence:i+1,status:'practiced',runtimeMode:'PRACTICE',turnOwnership:'coach',retryPending:false,newPrompt:'Please make a new sentence.',learnerUtterance:i===0?original:'My '+x.target+' likes music.',utteranceReliability:'confirmed',transcriptionIssue:false,semanticGuessUsed:false,learnerFinished:true,hearingReliable:true,turnCompletionReliable:true,completeAnswerScanned:true,selfCorrectionDetected:false,correctionScope:i===0?'complete_sentence':'none',retryScope:i===0?'complete_sentence':'none',modelOnly:false,coachSuppliedAnswer:false,independentAfterCoachAnswer:false,targetProducedIndependently:true,targetUsageCorrect:true,blockingErrorRemaining:false,currentItemStateHistory:i===0?['PENDING','ACTIVE','AWAITING_LEARNER','EVALUATING','CORRECTION_REQUIRED','AWAITING_RETRY','EVALUATING_RETRY','RESOLVED']:['PENDING','ACTIVE','AWAITING_LEARNER','EVALUATING','RESOLVED'],runtimeFinalState:'RESOLVED',evidenceValid:true,correctionLock:'none',coachTurnAction:'ADVANCE',coachTurnEndedAfterCorrection:i===0,resolution:{hearing:'clear',clarificationPrompt:'',clarificationResponse:'',targetOrTask:'resolved',recallSupport:'none',correction:i===0?'retried':'not_needed',queueUpdated:true},correctionRequired:i===0,importantLanguageError:i===0,importantLanguageErrorsResolved:true,productionQuality:i===0?'needs_review':'acceptable',newContext:true,praiseGiven:false})),speakingCorrections:[{target:first.target,coverageId:first.coverageId,original,better,errorSpans:[first.target+' like'],reason:'Use third-person singular likes.',correctionScope:'complete_sentence',retryScope:'complete_sentence',resolution:'retried',learnerRetried:true,retryUtterance:better,retryLearnerFinished:true,retryUtteranceReliability:'confirmed',retryTranscriptionIssue:false,correctionTurnSequence:1,retryTurnSequence:2}],finalChallenge:{attemptSequence:null,finalChallengeAttempted:false,finalTurnCompletionReliable:false,finalHearingReliable:false,finalSentenceCount:0,finalIndependentTargetCount:0,finalTargetUsageAcceptable:false,finalCompleteAnswerScanned:false,finalImportantErrorsResolved:false,finalRetryPending:false,newPrompt:'',learnerUtterance:'',utteranceReliability:'not_applicable',transcriptionIssue:false,learnerFinished:false,turnCompletionReliable:false,completeAnswerScanned:false,selfCorrectionDetected:false,correctionScope:'none',retryScope:'none',independentProduction:false,coachSuppliedAnswer:false,feedbackGiven:false,correction:'not_needed',correctionResolved:false,runtimeFinalState:'PENDING',correctionLock:'none',preFinalAuditPassed:false,finalAuditPassed:false,remainingCoverageBeforeChallenge:null,auditedCoverageIds:[],evidenceValid:false},correctionChecks:[],overallNotes:['實際練習兩項。']};
+const tick=()=>new Promise(resolve=>setImmediate(resolve));
+async function main(){
+ const app=createApp();await tick();
+ const {run,json,get,localStorage,copied}=app;
+ assert.match(html,/<section id="speaking" class="page">[\s\S]*?準備今天的 Speaking[\s\S]*?<\/section>/);
+ assert(!html.includes('id="copySpeakingBrief"'));
+ assert(!html.includes('id="importSpeakingReport"'));
+ assert(!html.includes('/functions/v1/speaking-queue'));
+ assert(!html.includes('id="mobileAddress"'));
+ assert(!html.includes('手機與電腦共用同一份資料'));
+ assert.match(html,/<details class="dashboard-guide"><summary>新增教材流程<\/summary>/);
+ assert(get('syncStatus').textContent.includes('Cloud sync on'));
+ const initialState=JSON.stringify(json('localSyncSnapshot()'));
+ get('dashboardToSpeaking').onclick();assert(get('speaking').classList.contains('active'));
+ get('dashboardToLearning').onclick();assert(get('learn').classList.contains('active'));
+ assert.equal(JSON.stringify(json('localSyncSnapshot()')),initialState);
+ console.log('PASS Cloud Sync explanation card removed, header status retained, and dashboard shortcuts navigate without data changes');
+ run('showPage("speaking")');assert(get('speaking').classList.contains('active'));
+ assert(get('mobilePage').value==='speaking');
+ assert.equal(get('speakingLesson').value,'A');
+ assert(!html.includes('id="importSpeakingReport"'));
+ assert(get('speakingReportInput'));assert(get('saveSpeakingReport'));assert(get('speakingReportList'));
+ console.log('PASS Speaking navigation, Brief and report inbox controls; old import endpoint absent');
+ assert.equal(JSON.parse(localStorage.getItem('english_os_lessons'))[0].curriculum.mainVocabulary[0].term,'spouse');
+ for(const section of ['lessonConcept','mainVocabulary','extendedVocabulary','grammar','conversationReference'])assert.deepEqual(JSON.parse(localStorage.getItem('english_os_lessons'))[0].curriculum[section],lesson.curriculum[section]);
+ run('showPage("materials")');assert(get('lessons').innerHTML.includes('家庭成員'));
+ run('showPage("dashboard")');assert(get('dashLessons').innerHTML.includes('家庭成員'));
+ console.log('PASS Dashboard, Materials, and all five curriculum sections preserved');
+ run('showPage("speaking")');
+ const beforeBrief=JSON.stringify(json('localSyncSnapshot()')),writesBeforeBrief=remote.writes;
+ get('prepareSpeakingBrief').onclick();
+ const firstBrief=JSON.parse(get('speakingBriefPreview').value);
+ assert.equal(firstBrief.type,'SPEAKING_BRIEF');assert.equal(firstBrief.schemaVersion,'2.1');
+ assert.equal(firstBrief.lessonId,'A');assert.equal(firstBrief.lessonTitle,'家庭成員');
+ for(const key of ['mainVocabulary','extendedVocabulary','grammar','conversationReference'])assert.deepEqual(firstBrief[key],lesson.curriculum[key]);
+ assert(!Object.hasOwn(firstBrief,'reviewItems'));
+ assert(!Object.hasOwn(firstBrief,'previousWeaknesses'));
+ assert(firstBrief.targetPlan.eligibleTargets.every(x=>x.lessonId==='A'&&x.source!=='reviewItems'));
+ assert(!JSON.stringify(firstBrief).includes('archived-only'));
+ assert(!JSON.stringify(firstBrief).includes('not-in-materials'));
+ assert.equal(firstBrief.coachInstructions.mode,'adaptive_lesson_speaking');
+ assert.equal(firstBrief.coachInstructions.targetSelection.currentLessonCoverageRequired,true);
+ assert.equal(firstBrief.coachInstructions.targetSelection.onlyCurrentLessonTargets,true);
+ assert.equal(firstBrief.coachInstructions.interactionRules.doNotProvideModelAnswerBeforeAttempt,true);
+ assert.equal(firstBrief.coachInstructions.interactionRules.silenceDoesNotEqualCompletion,true);
+ assert.equal(firstBrief.coachInstructions.questionHandling.answerQuestionImmediately,true);
+ assert.equal(firstBrief.coachInstructions.correction.preserveLearnerOriginal,true);
+ assert.deepEqual(firstBrief.coachInstructions.sessionFlow,['warm_up','current_lesson_application','final_challenge']);
+ assert.equal(firstBrief.coachInstructions.turnCompletion.allowedEncouragement,'Take your time.');
+ assert.equal(firstBrief.coachInstructions.turnCompletion.uncertainCompletionQuestion,'Are you still thinking?');
+ assert.equal(firstBrief.coachInstructions.completion.timeLimit,false);
+ assert.equal(firstBrief.targetPlan.currentTarget.target,'spouse');
+ assert(firstBrief.targetPlan.remainingTargets.some(x=>x.target==='spouse'));
+ assert.deepEqual(firstBrief.targetPlan.practicedTargets,[]);
+ await get('copySpeakingV2Brief').onclick();assert.equal(copied.at(-1),get('speakingBriefPreview').value);
+ assert.equal(JSON.stringify(json('localSyncSnapshot()')),beforeBrief);assert.equal(remote.writes,writesBeforeBrief);
+ const sourceSnapshot=new Map(['english_os_learning_signals','english_os_weaknesses','english_os_lesson_state_A'].map(key=>[key,localStorage.getItem(key)]));
+ localStorage.setItem('english_os_learning_signals',JSON.stringify([{lessonId:'A',component:'Vocabulary',target:'other-target',reason:'speaking_review'}]));
+ localStorage.setItem('english_os_weaknesses',JSON.stringify({vocabulary:['other-target']}));
+ localStorage.setItem('english_os_lesson_state_A',JSON.stringify({vocabulary:{spouse:{meaning:{status:'weak'}}}}));
+ assert.deepEqual(JSON.parse(JSON.stringify(run('buildSpeakingV2Brief("A")'))),firstBrief);
+ for(const [key,value] of sourceSnapshot)localStorage.setItem(key,value);
+ console.log('PASS Speaking Brief uses only selected curriculum; Review and learning-state changes cannot enter its targets');
+ get('saveSpeakingReport').onclick();assert.match(get('speakingReportStatus').textContent,/請先貼上/);
+ const beforeReport=json('localSyncSnapshot()');
+ const pastedReport='SPEAKING REPORT\nLesson: 家庭成員\nMy sentence: My spouse is kind.\n<unsafe> & words';
+ get('speakingReportInput').value=pastedReport;get('saveSpeakingReport').onclick();
+ const inboxKey='english_os_speaking_report_inbox_v2';
+ let inbox=JSON.parse(localStorage.getItem(inboxKey));
+ assert.equal(inbox.length,1);assert.equal(inbox[0].lessonId,'A');assert.equal(inbox[0].text,pastedReport);assert.equal(inbox[0].verification,'not_validated');
+ assert(get('speakingReportList').innerHTML.includes('&lt;unsafe&gt; &amp; words'));
+ assert(!get('speakingReportList').innerHTML.includes('<unsafe>'));
+ assert.equal(get('speakingReportInput').value,'');
+ for(const [key,value] of Object.entries(beforeReport))assert.equal(localStorage.getItem(key),value,`Report save changed ${key}`);
+ get('speakingReportInput').value=pastedReport;get('saveSpeakingReport').onclick();
+ assert.equal(JSON.parse(localStorage.getItem(inboxKey)).length,1);
+ console.log('PASS report paste, exact-text preservation, escaping, empty-input handling, idempotence, and no other data mutation');
+ const corrupt=createApp(new Map([[inboxKey,'{broken']]));await tick();corrupt.run('showPage("speaking")');
+ corrupt.get('speakingReportInput').value='A new report';corrupt.get('saveSpeakingReport').onclick();
+ assert.equal(corrupt.localStorage.getItem(inboxKey),'{broken');
+ assert.match(corrupt.get('speakingReportStatus').textContent,/未覆寫原始資料/);
+ console.log('PASS unreadable existing report inbox is never overwritten');
+ run('showPage("add")');get('json').value=JSON.stringify({lessonTitle:'新教材',lessonConcept:[{title:'New concept'}],mainVocabulary:[{term:'friend',meaning:'朋友'}],extendedVocabulary:[{term:'acquaintance',meaning:'熟人'}],grammar:[{rule:'Present tense'}],conversationReference:[{title:'Greeting',content:['Hello']}],unclassifiedVocabulary:[]});
+ await get('preview').onclick();assert(get('concept').innerHTML.includes('New concept'));
+ await get('save').onclick();assert.equal(JSON.parse(localStorage.getItem('english_os_lessons')).length,2);
+ assert.equal(JSON.parse(localStorage.getItem('english_os_lessons'))[0].curriculum.mainVocabulary[0].term,'spouse');
+ console.log('PASS Add Material preview/save without changing the existing lesson');
+ const savedLessons=JSON.parse(localStorage.getItem('english_os_lessons')),newLesson=savedLessons[1];
+ run('showPage("speaking")');get('speakingLesson').value=newLesson.id;get('speakingLesson').onchange();
+ assert(!get('speakingReportList').innerHTML.includes('My spouse is kind.'));
+ get('speakingReportInput').value='SPEAKING REPORT\nLesson: 新教材';get('saveSpeakingReport').onclick();
+ inbox=JSON.parse(localStorage.getItem(inboxKey));assert.equal(inbox.length,2);assert.equal(inbox[1].lessonId,newLesson.id);
+ get('speakingLesson').value='A';get('speakingLesson').onchange();assert(get('speakingReportList').innerHTML.includes('My spouse is kind.'));
+ get('speakingLesson').value=newLesson.id;get('speakingLesson').onchange();
+ assert(get('speakingReportList').innerHTML.includes('Lesson: 新教材'));
+ console.log('PASS saved reports remain associated with their selected lesson');
+ get('prepareSpeakingBrief').onclick();const freshBrief=JSON.parse(get('speakingBriefPreview').value);
+ assert.deepEqual(freshBrief.mainVocabulary,newLesson.curriculum.mainVocabulary);
+ assert.deepEqual(freshBrief.extendedVocabulary,newLesson.curriculum.extendedVocabulary);
+ assert.deepEqual(freshBrief.grammar,newLesson.curriculum.grammar);
+ assert.deepEqual(freshBrief.conversationReference,newLesson.curriculum.conversationReference);
+ assert(!freshBrief.mainVocabulary.some(x=>x.term==='spouse'));
+ const minimal={id:'minimal',title:'只有主單字',curriculum:{mainVocabulary:[{term:'river',meaning:'河流'}]}};
+ localStorage.setItem('english_os_lessons',JSON.stringify([...savedLessons,minimal]));
+ run('showPage("speaking")');get('speakingLesson').value='minimal';get('speakingLesson').onchange();
+ get('prepareSpeakingBrief').onclick();const minimalBrief=JSON.parse(get('speakingBriefPreview').value);
+ assert.deepEqual(minimalBrief.mainVocabulary,minimal.curriculum.mainVocabulary);
+ for(const key of ['extendedVocabulary','grammar','conversationReference'])assert.deepEqual(minimalBrief[key],[]);
+ assert(!JSON.stringify(minimalBrief).includes('acquaintance'));
+ localStorage.setItem('english_os_lessons',JSON.stringify(savedLessons));
+ run('showPage("speaking")');assert.equal(get('speakingBriefPreview').value,'');
+ console.log('PASS selected new lesson is dynamic; absent optional curriculum stays empty; stale preview clears');
+ run('showPage("learn")');get('learnLesson').value='A';await get('startLearning').onclick();
+ assert(json('learnSession&&learnSession.status')==='in_progress');assert(json('learnItems.length')>0);
+ await get('endLearning').onclick();assert(JSON.parse(localStorage.getItem('english_os_sessions')).length===2);
+ assert.equal(JSON.parse(localStorage.getItem('english_os_sessions'))[0].id,'sess_old');
+ console.log('PASS Learning Session starts, ends, and preserves earlier sessions');
+ run('showPage("correction")');assert(get('correctionList').innerHTML.includes('spouse'));
+ assert(json('correctionItems().length')>0);get('corr_0').value='My spouse is good.';run('completeCorrection(0)');
+ assert.equal(JSON.parse(localStorage.getItem('english_os_gpt_reports'))[0].gradedAnswers[0].corrected,true);
+ console.log('PASS Correction renders, saves an answer, and preserves the GPT report');
+ run('showPage("review")');const review=json('buildReviewQueue()');assert(review.some(x=>x.target==='spouse'));
+ assert(review.some(x=>x.target==='archived-only'&&x.reasons.includes('speaking_review')));
+ assert.equal(run('reviewReasonLabel("speaking_review")'),'Speaking 需要複習');
+ assert(JSON.parse(localStorage.getItem('english_os_learning_signals')).some(x=>x.target==='archived-only'));
+ console.log('PASS Review retains historical Speaking signals and its previous labels');
+ const preserved=JSON.parse(localStorage.getItem('english_os_speaking_reports'));
+ assert.deepEqual(preserved,[archivedSpeaking]);
+ await run('cloudSave()');assert(remote.writes>0);assert.deepEqual(JSON.parse(remote.state.english_os_speaking_reports),[archivedSpeaking]);
+ assert.equal(JSON.parse(remote.state[inboxKey]).length,2);
+ const before=clone(remote.state);const reloaded=createApp();await tick();
+ assert.deepEqual(reloaded.json('localSyncSnapshot()'),before);
+ assert(reloaded.get('dashLessons').innerHTML.includes('家庭成員'));
+ assert(reloaded.get('dashLessons').innerHTML.includes('新教材'));
+ assert.equal(JSON.parse(reloaded.localStorage.getItem('english_os_sessions')).length,2);
+ assert.deepEqual(JSON.parse(reloaded.localStorage.getItem('english_os_lesson_state_A')),JSON.parse(remote.state.english_os_lesson_state_A));
+ assert.deepEqual(JSON.parse(reloaded.localStorage.getItem('english_os_speaking_reports')),[archivedSpeaking]);
+ reloaded.run('showPage("speaking")');assert.equal(JSON.parse(reloaded.localStorage.getItem(inboxKey)).length,2);
+ assert(reloaded.get('speakingReportList').innerHTML.includes('My spouse is kind.'));
+ assert.equal(remote.speakingCalls,0);
+ console.log('PASS Cloud Sync, reload, archived records, and zero Speaking endpoint calls');
+ console.log('ALL PASS: 13 integration checks');
 }
-sandbox.uiRaw=JSON.stringify(queueReport());
-await test('False GPT complete imports partial Coverage and shows spontaneous correction',async()=>{nodes.get('speakingReport').value=sandbox.uiRaw;const r=await run('$("importSpeakingReport").onclick()');assert.equal(r.osVerifiedCompleted,false);assert.equal(r.gptClaimedCompleted,true);assert(r.coverageChecks.slice(0,2).every(x=>x.runtimeMode==='PRACTICE'&&x.turnOwnership==='coach'&&x.retryPending===false));assert.equal(r.finalChallenge.runtimeMode,'FINAL');assert.equal(r.finalChallenge.turnOwnership,'learner');assert(nodes.get('speakingImportResult').textContent.includes('2 / 5'));assert(nodes.get('speakingChecks').innerHTML.includes('English OS 驗證：未完成'));assert(nodes.get('speakingQueuePanel').innerHTML.includes('Vocabulary Coverage: 2 / 5'));assert(nodes.get('speakingChecks').innerHTML.includes('My '+s.queue[0].target+' likes music.'))});
-await test('Continuation button preserves 2 completed and resumes only 3 Vocabulary items',async()=>{await run('$("resumeSpeakingQueue").onclick()');const next=json('speakingQueueCache.A');assert.equal(next.speakingSessionId,s.speakingSessionId);assert.notEqual(next.activeAttempt.id,s.activeAttempt.id);assert.equal(next.completedCoverage.length,2);assert.equal(next.remainingCoverage.length,3);assert(next.remainingCoverage.every(x=>x.kind==='vocabulary'));const b=nodes.get('speakingBrief').value;assert(b.includes('SPEAKING CONTINUATION'));assert(b.includes('Resume the CURRENT WORD. Do not restart warm-up.'));assert(b.includes('COMPLETED WORDS:'));assert(b.includes('REMAINING WORDS:'))});
-await test('Clearing local queue cache restores server progress, no duplicate report/time',async()=>{run('speakingQueueCache={};speakingBriefDraft=null');await run('refreshSpeakingQueue()');assert.equal(json('speakingQueueCache.A').completedCoverage.length,2);assert.equal(json('JSON.parse(localStorage.getItem("english_os_speaking_reports"))').filter(x=>x.schemaVersion==='2.32.0').length,1)});
-await test('Offline import preserves pending text, never grants completion or erases valid evidence',async()=>{offline=true;const before=json('speakingQueueCache.A');const raw=queueReport();raw.continuationAttemptId=before.activeAttempt.id;sandbox.offlineRaw=JSON.stringify(raw);const r=await run('importSpeakingReportText(offlineRaw)');assert.equal(r,null);assert.equal(run('localStorage.getItem("hanne_speaking_pending_report_v224")'),sandbox.offlineRaw);assert.equal(json('speakingQueueCache.A').completedCoverage.length,2);offline=false});
-await test('Calling legacy saver directly cannot bypass new server gate',()=>{assert.throws(()=>run('saveSpeakingReport(JSON.parse(uiRaw))'),/伺服器/)});
-await test('V2.23 parser remains compatible and cannot claim completion with missing coverage',()=>{const raw={type:'SPEAKING_REPORT',schemaVersion:'2.23.0',speakingSessionId:'legacy-223-test',lessonId:'A',completed:false,endReason:'learner_requested_stop',speakingMinutes:null,timeBasis:'not_recorded',phaseProgress:['warmup','lesson_application','knowledge_integration','final_challenge'].map(phaseId=>({phaseId,status:'not_started',notes:''})),finalChallenge:{learnerFinished:false,independentProduction:false,coachSuppliedAnswer:false,feedbackGiven:false},coverageChecks:[],correctionChecks:[],targetsUsedWell:[],targetsToReview:[],grammarToReview:[],pronunciationNotes:[],betterExpressions:[],overallNotes:[]};sandbox.legacy223=raw;assert.equal(run('saveSpeakingReport(legacy223)').schemaVersion,'2.23.0');raw.speakingSessionId='legacy-false';raw.completed=true;raw.endReason='completed';assert.throws(()=>run('saveSpeakingReport(legacy223)'))});
-await test('All source answers, correction feedback, corrected_needs_review and Learning timer state preserved',()=>{assert.equal(run('localStorage.getItem("english_os_gpt_reports")'),run('JSON.stringify([reportA,reportB])'));assert.equal(json('speakingCorrectionRecords().find(c=>c.itemId==="sentence"&&c.lessonId==="A")').correctionStatus,'corrected_needs_review');assert.equal(json('sessionAnswerRecords(sessionA).find(x=>x.target==="missing")').status,'question_not_displayed');assert(!json('buildReviewQueue()').some(x=>x.target==='missing'))});
-console.log(results.join('\n'));console.log('ALL PASS: '+passed);
-}catch(e){console.error(results.join('\n'));console.error(e);process.exitCode=1}});
+if(require.main===module)main().catch(error=>{console.error(error);process.exitCode=1});
+module.exports={createApp,remote,tick};

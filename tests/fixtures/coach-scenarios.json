@@ -1,0 +1,132 @@
+[
+  {
+    "id": "start",
+    "targets": ["niece", "ancestor", "descendant"],
+    "event": "brief_loaded",
+    "expectedTarget": "niece",
+    "expectedPrompt": "Let's start with niece. Make a sentence using niece."
+  },
+  {
+    "id": "next",
+    "targets": ["niece", "ancestor", "descendant"],
+    "currentTarget": "niece",
+    "learner": "Next.",
+    "event": "ready_signal",
+    "expectedTarget": "ancestor"
+  },
+  {
+    "id": "out_of_brief",
+    "targets": ["niece", "ancestor", "descendant"],
+    "excludedTarget": "challenge",
+    "event": "target_selection"
+  },
+  {
+    "id": "incomplete_speech",
+    "targets": ["niece", "ancestor"],
+    "currentTarget": "niece",
+    "learner": "My niece... um... she...",
+    "event": "incomplete",
+    "expectedPrompt": "Take your time."
+  },
+  {
+    "id": "unclear_transcript",
+    "targets": ["flight attendant"],
+    "currentTarget": "flight attendant",
+    "learner": "But extra cutting cool?",
+    "event": "unreliable_hearing",
+    "expectedPrompt": "Sorry, I didn't catch that clearly. Could you say it again?"
+  },
+  {
+    "id": "correct_sentence",
+    "targets": ["flight attendant"],
+    "currentTarget": "flight attendant",
+    "learner": "This flight attendant is very beautiful.",
+    "event": "complete_reliable_correct",
+    "expectedPrompt": "Correct. That sounds natural."
+  },
+  {
+    "id": "real_grammar_error",
+    "targets": ["valet"],
+    "currentTarget": "valet",
+    "learner": "The valet parking my car.",
+    "event": "complete_reliable_error",
+    "minimalCorrection": "The valet is parking my car.",
+    "explanation": "Present continuous needs be + verb-ing.",
+    "expectedPrompt": "My sentence:\nThe valet parking my car.\n\nBetter:\nThe valet is parking my car.\n\nWhy:\nPresent continuous needs be + verb-ing."
+  },
+  {
+    "id": "question_interruption",
+    "targets": ["valet", "ancestor"],
+    "currentTarget": "valet",
+    "practicedTargets": ["valet"],
+    "learner": "What's different?",
+    "event": "question_after_correction",
+    "expectedNextTarget": "ancestor"
+  },
+  {
+    "id": "no_coach_created_evidence",
+    "targets": ["caterer"],
+    "currentTarget": "caterer",
+    "learner": "Party.",
+    "event": "fragment_without_target",
+    "forbiddenCoachSentence": "I hired a caterer for the party.",
+    "expectedPrompt": "Please make a complete sentence using caterer."
+  },
+  {
+    "id": "end_of_list",
+    "targets": ["valet", "construction worker"],
+    "currentTarget": "valet",
+    "practicedTargets": ["valet"],
+    "event": "completion_check",
+    "expectedNextTarget": "construction worker"
+  },
+  {
+    "id": "vocabulary_to_optional_grammar",
+    "targets": ["niece", "ancestor", "descendant", "sibling", "spouse"],
+    "grammar": ["grammar_1", "grammar_2", "grammar_3"],
+    "resolvedVocabulary": ["niece", "ancestor", "descendant", "sibling", "spouse"],
+    "expectedNextTargetIfContinuing": "grammar_1"
+  },
+  {
+    "id": "preserve_valid_lexical_choice",
+    "targets": ["ancestor"],
+    "learner": "My ancestor was a salesman and he sold pork in the market.",
+    "expectedPrompt": "Correct. That sounds natural.",
+    "forbiddenReplacement": "businessman"
+  },
+  {
+    "id": "minimal_meaning_locked_correction",
+    "targets": ["niece"],
+    "learner": "My niece is descendant of my sister.",
+    "minimalCorrection": "My niece is a descendant of my sister.",
+    "explanation": "Descendant is a singular countable noun here, so you need a.",
+    "expectedAddedToken": "a",
+    "preservedContentWord": "sister",
+    "forbiddenReplacement": "sibling"
+  },
+  {
+    "id": "clarification_blocks_progression",
+    "targets": ["spouse", "sibling"],
+    "learner": "What's different in my sentence?",
+    "original": "If I get married, my boyfriend is my spouse.",
+    "corrected": "If I get married, my boyfriend will be my spouse.",
+    "difference": "is → will be",
+    "forbiddenNextTarget": "sibling"
+  },
+  {
+    "id": "clarification_follow_up",
+    "targets": ["spouse", "sibling"],
+    "learner": "What situation do I use is and what situation do I use will be?",
+    "expectedCurrentExplanation": "is = true/current state",
+    "expectedFutureExplanation": "will be = future state/result",
+    "acknowledgment": "I understand",
+    "expectedNextTarget": "sibling"
+  },
+  {
+    "id": "optional_grammar_natural_ending",
+    "targets": ["niece", "ancestor", "descendant", "sibling", "spouse"],
+    "grammar": ["grammar_1", "grammar_2", "grammar_3"],
+    "resolvedVocabulary": ["niece", "ancestor", "descendant", "sibling", "spouse"],
+    "resolvedGrammar": ["grammar_1", "grammar_2", "grammar_3"]
+  }
+]

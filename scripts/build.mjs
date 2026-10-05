@@ -21,6 +21,9 @@ for(const id of ['speakingLesson','prepareSpeakingBrief','speakingBriefPreview',
 for(const id of ['speakingReportInput','saveSpeakingReport','speakingReportStatus','speakingReportList']){
   if(!html.includes(`id="${id}"`))throw new Error(`Speaking report inbox control missing: ${id}`);
 }
+for(const id of ['reviewLesson','reviewTopPagination','reviewBottomPagination']){
+  if(!html.includes(`id="${id}"`))throw new Error(`Review pagination control missing: ${id}`);
+}
 if(!html.includes('schemaVersion:"2.1"'))throw new Error('Speaking V2 Brief schema missing.');
 for(const required of ['function speakingTargetPlan','neverInventOutOfBriefTarget:true','onlyReliableIndependentLearnerProductionCounts:true','confirmImplausibleOrAmbiguousTranscriptFirst:true','grammarTargetsOptionalForSessionEnding:true','priorityOverReadySignalsAndProgression:true','everyChangedContentWordNeedsReason:true']){
   if(!html.includes(required))throw new Error(`Speaking Coach behavior missing: ${required}`);

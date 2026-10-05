@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Hanne's English OS V2.41.3</title>
+<title>Hanne's English OS V2.41.4</title>
 <style>
 :root{--bg:#f7f5f1;--card:#fffefc;--ink:#39373d;--muted:#85818a;--lav:#8f86a5;--lav2:#eeeaf2;--blue:#edf3f6;--rose:#b18383;--line:#e5e0dc;--green:#657b69;--greenbg:#edf3ee}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",sans-serif}
@@ -98,6 +98,7 @@ textarea.small{min-height:90px;font:inherit}
 .vocab-topic-list{display:grid;gap:12px;margin-top:18px}
 .vocab-row{display:grid;grid-template-columns:minmax(150px,.9fr) minmax(220px,1.5fr) auto;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
 .vocab-prompt{font-weight:850;font-size:18px}
+.review-item-meta{font-size:12px;color:#71677f;line-height:1.45;margin-top:4px}.review-pagination{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:16px 0}.review-page-controls{display:flex;gap:8px}.review-page-label{font-size:13px;color:#71677f;font-weight:700}
 .vocab-actions{display:flex;gap:7px;align-items:center}
 .vocab-forgot{border:1px solid #d7cfdc;background:#fff;border-radius:999px;padding:8px 11px;cursor:pointer;white-space:nowrap}
 .vocab-forgot.active{background:#eee9f4;border-color:#bcaec7}
@@ -145,7 +146,7 @@ input,textarea,select{min-width:0;max-width:100%}button{max-width:100%;white-spa
 .teaching-section h4{font-size:13px;color:#71677f;margin:0 0 6px}.teaching-section.full{grid-column:1/-1}.teaching-section.better{background:var(--greenbg)}
 .teaching-section p{margin:6px 0}.correction-card textarea{font:inherit;min-height:104px;margin:10px 0}.correction-card label{display:block;font-weight:750}
 .correction-card{border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden;margin:10px 0}.correction-card summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none;padding:14px 16px}.correction-card summary::-webkit-details-marker{display:none}.correction-card summary::after{content:"＋";color:var(--lav);font-size:20px;line-height:1}.correction-card[open] summary::after{content:"−"}.correction-item-label{display:grid;gap:3px;min-width:0;flex:1}.correction-item-label strong{font-size:17px;overflow-wrap:anywhere}.correction-item-label small{color:#71677f;font-size:12px}.correction-item-state{font-size:12px;font-weight:750;color:#71677f;white-space:nowrap}.correction-body{padding:0 16px 16px;border-top:1px solid var(--line)}
-.correction-toolbar{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:12px;align-items:end;margin-bottom:18px}.correction-toolbar label{display:block;font-size:13px;font-weight:800;margin-bottom:7px}.correction-lesson-select{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:13px;background:#fff;color:var(--ink);font:inherit}.correction-scope{color:#71677f;font-size:13px;line-height:1.5;margin:0 0 4px}
+.correction-toolbar,.review-toolbar{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:12px;align-items:end;margin-bottom:18px}.correction-toolbar label,.review-toolbar label{display:block;font-size:13px;font-weight:800;margin-bottom:7px}.correction-lesson-select,.review-lesson-select{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:13px;background:#fff;color:var(--ink);font:inherit}.correction-scope,.review-scope{color:#71677f;font-size:13px;line-height:1.5;margin:0 0 4px}
 .correction-status{font-size:13px;font-weight:700;color:#71677f}.data-issue{border:1px solid #dcc391;background:#fff8ea;border-radius:14px;padding:16px;margin:14px 0;line-height:1.65}.data-issue pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 28px);z-index:100;padding:12px 16px;border-radius:13px;background:#edf3ee;color:#405d47;box-shadow:0 6px 30px #39373d26;display:none;font-size:14px;overflow-wrap:anywhere}.toast.show{display:block}.toast.bad{background:#f7ecec;color:#8c4747}
 button:focus-visible,select:focus-visible,.dashboard-guide summary:focus-visible{outline:3px solid #9b91ae;outline-offset:3px}
@@ -157,7 +158,7 @@ button:focus-visible,select:focus-visible,.dashboard-guide summary:focus-visible
  .vocab-row{grid-template-columns:minmax(0,1fr);gap:9px}.vocab-actions{flex-wrap:wrap;justify-content:flex-start}.learn-card{padding:16px}
  .analytics-table{table-layout:fixed}.analytics-table th,.analytics-table td{font-size:11px;padding:9px 3px;overflow-wrap:anywhere}.analytics-badge{max-width:100%;padding:4px 6px}
  input,textarea,select,textarea.small,.learn-input{font-size:16px}.mini,.vocab-forgot,.vocab-missing,.speak-btn{min-height:42px}.btn{min-height:44px}
- .teaching-grid,.correction-toolbar{grid-template-columns:minmax(0,1fr)}.analytics-big{font-size:21px}.learn-question{font-size:20px}
+ .teaching-grid,.correction-toolbar,.review-toolbar{grid-template-columns:minmax(0,1fr)}.analytics-big{font-size:21px}.learn-question{font-size:20px}
 }
 @media(max-width:480px){
  .app{padding:18px 12px 54px}h1{font-size:24px}.card{padding:15px}.hero{padding:18px}.hero h2{font-size:22px}
@@ -168,7 +169,7 @@ button:focus-visible,select:focus-visible,.dashboard-guide summary:focus-visible
 
 </style>
 </head><body><div class="app">
-<div class="top"><div><h1>Hanne's English OS</h1><div class="sub">V2.41.3 · 依單元批改訂正</div></div><div id="syncStatus" class="pill">Sync connecting…</div></div>
+<div class="top"><div><h1>Hanne's English OS</h1><div class="sub">V2.41.4 · Review 分頁與單元篩選</div></div><div id="syncStatus" class="pill">Sync connecting…</div></div>
 <div class="nav"><button data-page="dashboard" class="active">Dashboard</button><button data-page="materials">Materials</button><button data-page="add">＋ Add Material</button><button data-page="learn">Learning Session</button><button data-page="correction">Correction</button><button data-page="review">Review</button><button data-page="speaking">Speaking</button></div>
 
 <div class="mobile-nav"><label for="mobilePage">前往頁面</label><select id="mobilePage" aria-label="主要導覽"><option value="dashboard">首頁 · Dashboard</option><option value="materials">教材 · Materials</option><option value="add">新增教材 · Add Material</option><option value="learn">學習 · Learning</option><option value="correction">訂正 · Correction</option><option value="review">複習 · Review</option><option value="speaking">口說 · Speaking</option></select></div>
@@ -249,7 +250,7 @@ button:focus-visible,select:focus-visible,.dashboard-guide summary:focus-visible
 </section>
 <section id="review" class="page">
 <div class="page-head"><div><div class="eyebrow">REVIEW</div><h2>Review Queue</h2><p>跨教材集中需要回頭的弱項；進入本頁會自動更新。「題目未顯示」與「暫時沒時間」不會被當成英文能力問題。</p></div></div>
-<div class="card"><div class="stats" id="reviewStats"></div><div id="reviewList" style="margin-top:16px"></div></div>
+<div class="card"><div class="review-toolbar"><div><label for="reviewLesson">查看單元</label><select id="reviewLesson" class="review-lesson-select" aria-label="選擇複習單元"></select></div><p id="reviewScope" class="review-scope"></p></div><div class="stats" id="reviewStats"></div><div id="reviewTopPagination" class="review-pagination" aria-live="polite"></div><div id="reviewList"></div><div id="reviewBottomPagination" class="review-pagination"></div></div>
 </section>
 
 <section id="speaking" class="page">
@@ -1074,11 +1075,34 @@ function buildReviewQueue(){
 function reviewReasonLabel(r){
  return ({developing:"仍需練習",meaning_forgot:"忘記意思",meaning_unknown:"不認得",spelling_forgot:"忘記拼字",recall_failed:"完全忘記",incorrect:"答錯",spelling_incorrect:"拼字錯",production_dont_know:"不知道怎麼造句",speaking_review:"Speaking 需要複習",corrected_needs_review:"已訂正・之後再驗收"}[r]||r);
 }
+const REVIEW_PAGE_SIZE=20;
+let reviewSelectedLessonId="__all__",reviewPage=1;
+function reviewLessonChoices(queue){
+ const choices=new Map(),titles=new Map();
+ JSON.parse(localStorage.getItem("english_os_lessons")||"[]").forEach(lesson=>{if(lesson?.id){const id=String(lesson.id),title=lesson.title||"未命名單元";choices.set(id,{id,title});titles.set(id,title)}});
+ JSON.parse(localStorage.getItem("english_os_sessions")||"[]").forEach(session=>{if(session?.lessonId&&session.lessonTitle&&!titles.has(String(session.lessonId)))titles.set(String(session.lessonId),session.lessonTitle)});
+ JSON.parse(localStorage.getItem("english_os_gpt_reports")||"[]").forEach(report=>{if(report?.lessonId&&report.lessonTitle&&!titles.has(String(report.lessonId)))titles.set(String(report.lessonId),report.lessonTitle)});
+ queue.forEach(item=>{const id=String(item.lessonId||"__unassigned__");if(!choices.has(id))choices.set(id,{id,title:titles.get(id)||"未歸屬單元"})});
+ return [...choices.values()];
+}
+function reviewComponentLabel(component){return ({Vocabulary:"單字","Lesson Concept":"課程概念","Grammar / Know-how":"文法"}[component]||component||"其他")}
 function renderReview(){
- let q=buildReviewQueue(),box=$("reviewList"),stats=$("reviewStats");if(!box||!stats)return;
- let v=q.filter(x=>x.component==="Vocabulary").length,c=q.filter(x=>x.component==="Lesson Concept").length,g=q.filter(x=>x.component==="Grammar / Know-how").length;
- stats.innerHTML=`<div><b>${q.length}</b><span>Review items</span></div><div><b>${v}</b><span>Vocabulary</span></div><div><b>${c}</b><span>Concept</span></div><div><b>${g}</b><span>Grammar</span></div>`;
- box.innerHTML=q.length?`<div class="vocab-topic-list">${q.map(x=>`<div class="vocab-row"><div class="vocab-prompt">${esc(x.target)}</div><div>${x.reasons.map(r=>`<span class="analytics-badge">${esc(reviewReasonLabel(r))}</span>`).join(" ")}</div><div class="tiny">出現 ${x.count} 次</div></div>`).join("")}</div>`:'<div class="empty">目前沒有需要 Review 的弱項。</div>';
+ const q=buildReviewQueue(),box=$("reviewList"),stats=$("reviewStats"),select=$("reviewLesson"),top=$("reviewTopPagination"),bottom=$("reviewBottomPagination");if(!box||!stats||!select||!top||!bottom)return;
+ const choices=reviewLessonChoices(q),choiceById=new Map(choices.map(choice=>[choice.id,choice]));
+ if(reviewSelectedLessonId!=="__all__"&&!choiceById.has(reviewSelectedLessonId)){reviewSelectedLessonId="__all__";reviewPage=1}
+ select.innerHTML=`<option value="__all__">全部單元 · ${q.length} 項</option>`+choices.map(choice=>`<option value="${esc(choice.id)}">${esc(choice.title)} · ${q.filter(item=>String(item.lessonId||"__unassigned__")===choice.id).length} 項</option>`).join("");
+ select.value=reviewSelectedLessonId;
+ select.onchange=()=>{reviewSelectedLessonId=select.value;reviewPage=1;renderReview()};
+ const filtered=reviewSelectedLessonId==="__all__"?q:q.filter(item=>String(item.lessonId||"__unassigned__")===reviewSelectedLessonId);
+ const pageCount=Math.max(1,Math.ceil(filtered.length/REVIEW_PAGE_SIZE));reviewPage=Math.min(Math.max(1,reviewPage),pageCount);
+ const offset=(reviewPage-1)*REVIEW_PAGE_SIZE,pageItems=filtered.slice(offset,offset+REVIEW_PAGE_SIZE);
+ const v=filtered.filter(item=>item.component==="Vocabulary").length,c=filtered.filter(item=>item.component==="Lesson Concept").length,g=filtered.filter(item=>item.component==="Grammar / Know-how").length;
+ stats.innerHTML=`<div><b>${filtered.length}</b><span>Review items</span></div><div><b>${v}</b><span>Vocabulary</span></div><div><b>${c}</b><span>Concept</span></div><div><b>${g}</b><span>Grammar</span></div>`;
+ $("reviewScope").textContent=reviewSelectedLessonId==="__all__"?"全部單元的複習項目；可改選單一單元。":`目前顯示：${choiceById.get(reviewSelectedLessonId)?.title||"未歸屬單元"}。`;
+ const label=filtered.length?`第 ${reviewPage} / ${pageCount} 頁 · 顯示 ${offset+1}–${offset+pageItems.length} / 共 ${filtered.length} 項`:`共 0 項`;
+ const pager=`<span class="review-page-label">${label}</span>${pageCount>1?`<div class="review-page-controls"><button class="btn ghost" data-review-step="-1" ${reviewPage===1?"disabled":""}>上一頁</button><button class="btn ghost" data-review-step="1" ${reviewPage===pageCount?"disabled":""}>下一頁</button></div>`:""}`;
+ [top,bottom].forEach(el=>{el.innerHTML=pager;el.querySelectorAll("[data-review-step]").forEach(button=>button.onclick=()=>{reviewPage=Math.min(pageCount,Math.max(1,reviewPage+Number(button.dataset.reviewStep)));renderReview();top.scrollIntoView({behavior:"smooth",block:"start"})})});
+ box.innerHTML=pageItems.length?`<div class="vocab-topic-list">${pageItems.map(item=>`<div class="vocab-row"><div><div class="vocab-prompt">${esc(item.target)}</div><div class="review-item-meta">${esc(choiceById.get(String(item.lessonId||"__unassigned__"))?.title||"未歸屬單元")} · ${esc(reviewComponentLabel(item.component))}</div></div><div>${item.reasons.map(reason=>`<span class="analytics-badge">${esc(reviewReasonLabel(reason))}</span>`).join(" ")}</div><div class="tiny">出現 ${item.count} 次</div></div>`).join("")}</div>`:'<div class="empty">這個範圍目前沒有需要 Review 的弱項。</div>';
 }
 
 // Speaking reads the selected lesson's Curriculum; the separate report inbox saves unverified original text.
